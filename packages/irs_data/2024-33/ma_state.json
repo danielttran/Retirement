@@ -1,0 +1,15 @@
+{
+  "2024": {
+    "flatRate": "0.05",
+    "surtaxRate": "0.04",
+    "surtaxThreshold": "1000000",
+    "personalExemption": {
+      "single": "4400",
+      "mfj": "8800",
+      "mfs": "4400",
+      "hoh": "6800",
+      "qw": "8800"
+    }
+  }
+}
+

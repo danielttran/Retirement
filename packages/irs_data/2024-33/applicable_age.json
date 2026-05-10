@@ -1,0 +1,7 @@
+[
+  {"birthDateStart": "1900-01-01", "birthDateEnd": "1949-06-30", "applicableAge": "70.5", "rule": "pre-SECURE"},
+  {"birthDateStart": "1949-07-01", "birthDateEnd": "1950-12-31", "applicableAge": "72", "rule": "SECURE 1.0"},
+  {"birthDateStart": "1951-01-01", "birthDateEnd": "1959-12-31", "applicableAge": "73", "rule": "SECURE 2.0"},
+  {"birthDateStart": "1960-01-01", "birthDateEnd": null, "applicableAge": "75", "rule": "SECURE 2.0"}
+]
+

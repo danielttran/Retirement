@@ -1,0 +1,30 @@
+{
+  "2024": {
+    "single": [
+      {"rate": "0", "floor": "0", "ceiling": "47025"},
+      {"rate": "0.15", "floor": "47025", "ceiling": "518900"},
+      {"rate": "0.20", "floor": "518900", "ceiling": null}
+    ],
+    "mfj": [
+      {"rate": "0", "floor": "0", "ceiling": "94050"},
+      {"rate": "0.15", "floor": "94050", "ceiling": "583750"},
+      {"rate": "0.20", "floor": "583750", "ceiling": null}
+    ],
+    "mfs": [
+      {"rate": "0", "floor": "0", "ceiling": "47025"},
+      {"rate": "0.15", "floor": "47025", "ceiling": "291850"},
+      {"rate": "0.20", "floor": "291850", "ceiling": null}
+    ],
+    "hoh": [
+      {"rate": "0", "floor": "0", "ceiling": "63000"},
+      {"rate": "0.15", "floor": "63000", "ceiling": "551350"},
+      {"rate": "0.20", "floor": "551350", "ceiling": null}
+    ],
+    "qw": [
+      {"rate": "0", "floor": "0", "ceiling": "94050"},
+      {"rate": "0.15", "floor": "94050", "ceiling": "583750"},
+      {"rate": "0.20", "floor": "583750", "ceiling": null}
+    ]
+  }
+}
+

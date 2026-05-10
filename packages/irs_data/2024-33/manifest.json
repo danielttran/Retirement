@@ -1,0 +1,11 @@
+{
+  "version": "2024-33",
+  "effectiveDate": "2024-08-12",
+  "sources": [
+    "IRS Internal Revenue Bulletin 2024-33",
+    "IRS Publication 590-B",
+    "IRS Notice 2022-6"
+  ],
+  "notes": "MVP seed data. Later phases should replace abbreviated tables with complete IRS-published tables."
+}
+

@@ -1,0 +1,8 @@
+{
+  "single": {"base": "25000", "adjustedBase": "34000"},
+  "hoh": {"base": "25000", "adjustedBase": "34000"},
+  "qw": {"base": "25000", "adjustedBase": "34000"},
+  "mfj": {"base": "32000", "adjustedBase": "44000"},
+  "mfs": {"base": "0", "adjustedBase": "0"}
+}
+
