@@ -197,11 +197,29 @@ export type ProjectionRunMetadata = {
   convergence_log_json: string | null;
 };
 
+export type ProjectionSummary = {
+  final_year: number;
+  final_age: number;
+  estate_net_worth: string;
+  peak_net_worth: string;
+  peak_net_worth_year: number;
+  lifetime_federal_tax: string;
+  lifetime_state_tax: string;
+  lifetime_penalties: string;
+  lifetime_total_tax: string;
+  total_lifetime_income: string;
+  total_lifetime_expenses: string;
+  total_lifetime_roth_conversions: string;
+  out_of_savings_year: number | null;
+  out_of_savings_age: number | null;
+};
+
 export type ProjectionRun = {
   metadata: ProjectionRunMetadata;
   years: ProjectionYear[];
   account_balances: ProjectionAccountBalance[];
   warnings: ProjectionWarning[];
+  summary: ProjectionSummary | null;
 };
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {

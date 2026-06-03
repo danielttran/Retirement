@@ -8,10 +8,12 @@ from planner_engine.projection.runner import (
     ProjectionAccountBalance,
     ProjectionRun,
     ProjectionRunMetadata,
+    ProjectionSummary,
     ProjectionWarning,
     ProjectionYear,
     ScenarioInput,
     SeppProjectionPlan,
+    compute_summary,
     run_projection,
 )
 
@@ -23,9 +25,11 @@ __all__ = [
     "ProjectionAccountBalance",
     "ProjectionRun",
     "ProjectionRunMetadata",
+    "ProjectionSummary",
     "ProjectionWarning",
     "ProjectionYear",
     "ScenarioInput",
     "SeppProjectionPlan",
+    "compute_summary",
     "run_projection",
 ]

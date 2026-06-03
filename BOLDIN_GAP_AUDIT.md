@@ -80,7 +80,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | LTCG stacking | ✓ | ✓ | ✅ |
 | SS taxation | ✓ | ✓ | ✅ |
 | Standard vs itemized optimization | ✓ | ❌ (std only) | ❌ |
-| Lifetime tax total | ✓ | ❌ | ❌ |
+| Lifetime tax total | ✓ | ✓ | ✅ |
 | IRMAA (Part B/D) | ✓ | ❌ | ❌ |
 | Tax-bracket-fill visualization | ✓ | ❌ | ❌ |
 
@@ -109,8 +109,8 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 |---|---|---|---|
 | Net worth over time | ✓ | ✓ | ✅ |
 | Cash flow | ✓ | ✓ | ✅ |
-| Out-of-money / out-of-savings age | ✓ | ❌ | ❌ |
-| Estate value at longevity | ✓ | ❌ | ❌ |
+| Out-of-money / out-of-savings age | ✓ | ✓ | ✅ |
+| Estate value at longevity | ✓ | ✓ | ✅ |
 | Sankey cash-flow chart | ✓ | ❌ | ⛔? (nice-to-have) |
 
 ## 13. Insights / Coach

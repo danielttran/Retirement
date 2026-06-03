@@ -224,6 +224,68 @@ export default function ProjectionPage() {
               {projection.metadata.engine_version} · IRS {projection.metadata.irs_data_version}
             </div>
 
+            {/* Headline metrics — Boldin-style summary */}
+            {projection.summary ? (
+              <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div
+                  className={`rounded-md border p-4 ${
+                    projection.summary.out_of_savings_age === null
+                      ? "border-emerald-300 bg-emerald-50"
+                      : "border-amber-300 bg-amber-50"
+                  }`}
+                >
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                    Savings last until
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-stone-950">
+                    {projection.summary.out_of_savings_age === null
+                      ? `Age ${projection.summary.final_age}+`
+                      : `Age ${projection.summary.out_of_savings_age}`}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    {projection.summary.out_of_savings_age === null
+                      ? "Liquid savings never deplete"
+                      : `Out of savings in ${projection.summary.out_of_savings_year}`}
+                  </p>
+                </div>
+                <div className="rounded-md border border-stone-300 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                    Estate at age {projection.summary.final_age}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-stone-950">
+                    {formatMoney(projection.summary.estate_net_worth)}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Peak {formatMoney(projection.summary.peak_net_worth)} in{" "}
+                    {projection.summary.peak_net_worth_year}
+                  </p>
+                </div>
+                <div className="rounded-md border border-stone-300 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                    Lifetime taxes
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-stone-950">
+                    {formatMoney(projection.summary.lifetime_total_tax)}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Fed {formatMoney(projection.summary.lifetime_federal_tax)} · State{" "}
+                    {formatMoney(projection.summary.lifetime_state_tax)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-stone-300 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                    Lifetime income
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-stone-950">
+                    {formatMoney(projection.summary.total_lifetime_income)}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Spending {formatMoney(projection.summary.total_lifetime_expenses)}
+                  </p>
+                </div>
+              </section>
+            ) : null}
+
             {/* Net Worth chart */}
             <section className="rounded-md border border-stone-300 bg-white p-5">
               <h2 className="mb-4 text-base font-semibold text-stone-950">

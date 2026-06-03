@@ -27,6 +27,7 @@ from planner_engine.projection import (
 from planner_engine.projection import (
     ScenarioInput,
     SeppProjectionPlan,
+    compute_summary,
     run_projection,
 )
 from planner_engine.roth import RothConversionPlan as EngineRothConversionPlan
@@ -71,6 +72,7 @@ from app.schemas import (
     ProjectionAccountBalanceRead,
     ProjectionRead,
     ProjectionRunMetadataRead,
+    ProjectionSummaryRead,
     ProjectionWarningRead,
     ProjectionYearRead,
     RothConversionPlanCreate,
@@ -899,11 +901,23 @@ def get_projection(scenario_id: str, session: SessionDep) -> ProjectionRead:
             .order_by(ProjectionWarning.year)
         ).all()
     )
+    scenario = session.get(Scenario, scenario_id)
+    illiquid_ids: set[str] = set()
+    if scenario is not None:
+        illiquid_ids = {
+            account.id
+            for account in session.scalars(
+                select(Account).where(Account.household_id == scenario.household_id)
+            ).all()
+            if account.account_type in {"real_estate", "debt"}
+        }
+    summary = compute_summary(years, balances, illiquid_ids)
     return ProjectionRead(
         metadata=ProjectionRunMetadataRead.model_validate(metadata),
         years=[ProjectionYearRead.model_validate(row) for row in years],
         account_balances=[ProjectionAccountBalanceRead.model_validate(row) for row in balances],
         warnings=[ProjectionWarningRead.model_validate(warning) for warning in warnings],
+        summary=None if summary is None else ProjectionSummaryRead(**summary.__dict__),
     )
 
 

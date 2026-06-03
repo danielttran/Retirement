@@ -346,11 +346,29 @@ class ProjectionWarningRead(ApiModel):
     message: str
 
 
+class ProjectionSummaryRead(BaseModel):
+    final_year: int
+    final_age: int
+    estate_net_worth: Decimal
+    peak_net_worth: Decimal
+    peak_net_worth_year: int
+    lifetime_federal_tax: Decimal
+    lifetime_state_tax: Decimal
+    lifetime_penalties: Decimal
+    lifetime_total_tax: Decimal
+    total_lifetime_income: Decimal
+    total_lifetime_expenses: Decimal
+    total_lifetime_roth_conversions: Decimal
+    out_of_savings_year: int | None
+    out_of_savings_age: int | None
+
+
 class ProjectionRead(ApiModel):
     metadata: ProjectionRunMetadataRead
     years: list[ProjectionYearRead]
     account_balances: list[ProjectionAccountBalanceRead]
     warnings: list[ProjectionWarningRead]
+    summary: ProjectionSummaryRead | None = None
 
 
 class ScenarioDetail(ScenarioRead):

@@ -154,3 +154,35 @@ def test_contribution_conservation_holds() -> None:
             ab.beginning_balance + ab.contributions - ab.distributions + ab.investment_return
         )
         assert abs(reconstructed - ab.ending_balance) <= Decimal("0.01")
+
+
+def test_projection_summary_metrics() -> None:
+    cash = AccountYearState("cash", "p1", "cash", Decimal("100000"), Decimal("0"))
+    run = run_projection(
+        ScenarioInput(
+            id="s1",
+            filing_status="single",
+            state="MA",
+            start_year=2024,
+            end_year=2027,
+            primary_person_id="p1",
+            people=[
+                Person("p1", dob_year=1959, age_by_year={2024: 65, 2025: 66, 2026: 67, 2027: 68})
+            ],
+            accounts=[cash],
+            income_streams=[],
+            expense_streams=[
+                ExpenseStream("living", "must_spend", Decimal("60000"), 2024, inflation_kind="none")
+            ],
+            assumptions=AssumptionSet(tax_iteration_max=5, tax_iteration_tolerance=Decimal("1.00")),
+        ),
+        IRS_VERSION,
+        ENGINE_VERSION,
+    )
+    summary = run.summary
+    assert summary.final_year == 2027
+    # 100k cash drained by 60k/yr expenses → out of savings in year 2 (2025).
+    assert summary.out_of_savings_year == 2025
+    assert summary.out_of_savings_age == 66
+    assert summary.estate_net_worth <= Decimal("0")
+    assert summary.total_lifetime_expenses == Decimal("240000.00")

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Protocol
 from uuid import uuid4
 
 from planner_engine.common import AccountYearState, Person, RothConversionLotState
@@ -180,12 +182,123 @@ class ProjectionWarning:
     message: str
 
 
+ILLIQUID_ACCOUNT_TYPES = {"real_estate", "debt"}
+
+
+@dataclass(frozen=True)
+class ProjectionSummary:
+    """Headline plan metrics (Boldin-style): lifetime taxes, out-of-savings age, estate value."""
+
+    final_year: int
+    final_age: int
+    estate_net_worth: Decimal
+    peak_net_worth: Decimal
+    peak_net_worth_year: int
+    lifetime_federal_tax: Decimal
+    lifetime_state_tax: Decimal
+    lifetime_penalties: Decimal
+    lifetime_total_tax: Decimal
+    total_lifetime_income: Decimal
+    total_lifetime_expenses: Decimal
+    total_lifetime_roth_conversions: Decimal
+    out_of_savings_year: int | None
+    out_of_savings_age: int | None
+
+
 @dataclass(frozen=True)
 class ProjectionRun:
     metadata: ProjectionRunMetadata
     years: list[ProjectionYear]
     account_balances: list[ProjectionAccountBalance]
     warnings: list[ProjectionWarning]
+    summary: ProjectionSummary
+
+
+class _YearLike(Protocol):
+    @property
+    def year(self) -> int: ...
+    @property
+    def age_primary(self) -> int: ...
+    @property
+    def ending_net_worth(self) -> Decimal: ...
+    @property
+    def federal_tax(self) -> Decimal: ...
+    @property
+    def state_tax(self) -> Decimal: ...
+    @property
+    def early_withdrawal_penalty(self) -> Decimal: ...
+    @property
+    def gross_income(self) -> Decimal: ...
+    @property
+    def required_distributions(self) -> Decimal: ...
+    @property
+    def expenses(self) -> Decimal: ...
+    @property
+    def roth_conversions(self) -> Decimal: ...
+
+
+class _BalanceLike(Protocol):
+    @property
+    def account_id(self) -> str: ...
+    @property
+    def year(self) -> int: ...
+    @property
+    def ending_balance(self) -> Decimal: ...
+
+
+def compute_summary(
+    years: Sequence[_YearLike],
+    account_balances: Sequence[_BalanceLike],
+    illiquid_account_ids: set[str],
+) -> ProjectionSummary | None:
+    """Derive headline metrics from a completed projection.
+
+    "Out of savings" = the first year liquid (investable) account balances are fully depleted, which
+    mirrors Boldin's out-of-savings age. Estate value is net worth in the final modeled year.
+    """
+    if not years:
+        return None
+    liquid_by_year: dict[int, Decimal] = {}
+    for bal in account_balances:
+        if bal.account_id in illiquid_account_ids:
+            continue
+        liquid_by_year[bal.year] = liquid_by_year.get(bal.year, ZERO) + bal.ending_balance
+
+    out_year: int | None = None
+    out_age: int | None = None
+    for row in years:
+        if liquid_by_year.get(row.year, ZERO) <= ZERO:
+            out_year = row.year
+            out_age = row.age_primary
+            break
+
+    peak = max(years, key=lambda r: r.ending_net_worth)
+    final = years[-1]
+    return ProjectionSummary(
+        final_year=final.year,
+        final_age=final.age_primary,
+        estate_net_worth=final.ending_net_worth,
+        peak_net_worth=peak.ending_net_worth,
+        peak_net_worth_year=peak.year,
+        lifetime_federal_tax=quantize_cents(sum((r.federal_tax for r in years), ZERO)),
+        lifetime_state_tax=quantize_cents(sum((r.state_tax for r in years), ZERO)),
+        lifetime_penalties=quantize_cents(sum((r.early_withdrawal_penalty for r in years), ZERO)),
+        lifetime_total_tax=quantize_cents(
+            sum(
+                (r.federal_tax + r.state_tax + r.early_withdrawal_penalty for r in years),
+                ZERO,
+            )
+        ),
+        total_lifetime_income=quantize_cents(
+            sum((r.gross_income + r.required_distributions for r in years), ZERO)
+        ),
+        total_lifetime_expenses=quantize_cents(sum((r.expenses for r in years), ZERO)),
+        total_lifetime_roth_conversions=quantize_cents(
+            sum((r.roth_conversions for r in years), ZERO)
+        ),
+        out_of_savings_year=out_year,
+        out_of_savings_age=out_age,
+    )
 
 
 @dataclass(frozen=True)
@@ -447,7 +560,36 @@ def run_projection(
         assumption_snapshot=_assumption_snapshot(scenario.assumptions),
         convergence_log=convergence_log,
     )
-    return ProjectionRun(metadata, projection_years, account_balances, warnings)
+    illiquid_ids = {
+        account_id
+        for account_id, account in accounts.items()
+        if account.account_type in ILLIQUID_ACCOUNT_TYPES
+    }
+    summary = compute_summary(projection_years, account_balances, illiquid_ids)
+    assert summary is not None or not projection_years
+    return ProjectionRun(
+        metadata,
+        projection_years,
+        account_balances,
+        warnings,
+        summary
+        or ProjectionSummary(
+            final_year=scenario.start_year,
+            final_age=0,
+            estate_net_worth=ZERO,
+            peak_net_worth=ZERO,
+            peak_net_worth_year=scenario.start_year,
+            lifetime_federal_tax=ZERO,
+            lifetime_state_tax=ZERO,
+            lifetime_penalties=ZERO,
+            lifetime_total_tax=ZERO,
+            total_lifetime_income=ZERO,
+            total_lifetime_expenses=ZERO,
+            total_lifetime_roth_conversions=ZERO,
+            out_of_savings_year=None,
+            out_of_savings_age=None,
+        ),
+    )
 
 
 def _solve_flexible_withdrawals(
