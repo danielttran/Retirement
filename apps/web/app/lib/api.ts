@@ -37,6 +37,8 @@ export type Account = {
   expected_return: string;
   cost_basis_pct: string | null;
   roth_first_contribution_year: number | null;
+  debt_annual_payment: string;
+  exclude_from_withdrawals: boolean;
   created_at: string;
 };
 

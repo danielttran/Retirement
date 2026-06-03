@@ -67,7 +67,10 @@ export default function AccountsPage() {
       roth_first_contribution_year:
         selectedType === "roth_ira" || selectedType === "roth_401k"
           ? Number(form.get("rothFirstContributionYear"))
-          : null
+          : null,
+      debt_annual_payment:
+        selectedType === "debt" ? String(form.get("debtAnnualPayment") ?? "0") : "0",
+      exclude_from_withdrawals: form.get("excludeFromWithdrawals") === "on"
     };
 
     try {
@@ -200,6 +203,25 @@ export default function AccountsPage() {
                 />
               </label>
             ) : null}
+
+            {selectedType === "debt" ? (
+              <label className="flex flex-col gap-2 text-sm font-medium text-stone-800">
+                Annual payment ($) — set the APR in &ldquo;Expected return&rdquo; above
+                <input
+                  className="h-10 rounded-md border border-stone-300 px-3"
+                  defaultValue="0"
+                  name="debtAnnualPayment"
+                  min="0"
+                  step="1"
+                  type="number"
+                />
+              </label>
+            ) : null}
+
+            <label className="flex items-center gap-2 text-sm font-medium text-stone-800">
+              <input name="excludeFromWithdrawals" type="checkbox" />
+              Exclude from automatic withdrawals
+            </label>
 
             <button
               className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"

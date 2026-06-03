@@ -63,7 +63,7 @@ def execute_withdrawals(
         for account in list(accounts_state.values()):
             if remaining <= Decimal("0"):
                 break
-            is_locked = account.id in sepp_locked_account_ids
+            is_locked = account.id in sepp_locked_account_ids or account.exclude_from_withdrawals
             if is_locked or not _account_matches_bucket(account, bucket):
                 continue
             owner = people[account.owner_person_id]

@@ -46,14 +46,14 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Real estate / primary home | ✓ | 🟡 (balance+appr.) | 🟡 |
 | **Contributions + employer match** | ✓ | ✓ | ✅ |
 | Per-account rate of return | ✓ | ✓ | ✅ |
-| Account exclusion from auto-withdrawal/RMD/conv | ✓ | ❌ | ❌ |
+| Account exclusion from auto-withdrawal/RMD/conv | ✓ | 🟡 (withdrawals) | 🟡 |
 | Home sale / downsize event | ✓ | ❌ | ❌ |
 | 529, deferred comp, life insurance (extra types) | ✓ | ❌ | ❌ |
 
 ## 5. Debt
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
-| Mortgage / loan w/ amortization + payoff | ✓ | ❌ (static debt balance) | ❌ |
+| Mortgage / loan w/ amortization + payoff | ✓ | ✓ (payment + interest + payoff) | ✅ |
 | Reverse mortgage / HELOC | ✓ | ❌ | ⛔? (advanced) |
 
 ## 6. Withdrawal Strategy

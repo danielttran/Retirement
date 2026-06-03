@@ -72,6 +72,8 @@ class Account(Base):
     hsa_qualified_medical_expense_pct: Mapped[Decimal | None] = mapped_column(
         Money(), nullable=True
     )
+    debt_annual_payment: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
+    exclude_from_withdrawals: Mapped[bool] = mapped_column(default=False, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(String, nullable=False)
 

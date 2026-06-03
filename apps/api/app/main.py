@@ -1187,6 +1187,8 @@ def account_to_engine_state(account: Account) -> AccountYearState:
         hsa_qualified_medical_expense_pct=(
             account.hsa_qualified_medical_expense_pct or Decimal("1")
         ),
+        debt_annual_payment=account.debt_annual_payment or Decimal("0"),
+        exclude_from_withdrawals=account.exclude_from_withdrawals,
     )
 
 

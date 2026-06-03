@@ -75,6 +75,8 @@ class AccountCreate(BaseModel):
     has_rollover_basis_from_penalty_account: bool = False
     rollover_basis_pct: Decimal | None = None
     hsa_qualified_medical_expense_pct: Decimal | None = None
+    debt_annual_payment: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    exclude_from_withdrawals: bool = False
 
 
 class AccountRead(AccountCreate, ApiModel):

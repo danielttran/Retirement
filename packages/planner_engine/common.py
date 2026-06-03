@@ -38,4 +38,8 @@ class AccountYearState:
     hsa_qualified_medical_expense_pct: Decimal = Decimal("1")
     spouse_beneficiary_person_id: str | None = None
     spouse_is_sole_beneficiary: bool = False
+    # Debt accounts only: scheduled annual principal+interest payment. ``balance`` is the amount
+    # owed (positive) and ``expected_return`` is the loan APR.
+    debt_annual_payment: Decimal = Decimal("0")
+    exclude_from_withdrawals: bool = False
 

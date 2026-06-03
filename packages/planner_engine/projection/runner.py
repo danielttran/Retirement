@@ -390,6 +390,39 @@ def _apply_contributions(
     )
 
 
+def _service_debt(
+    accounts: dict[str, AccountYearState],
+    distributions: dict[str, Decimal],
+) -> Decimal:
+    """Pay scheduled principal on debt accounts. Interest accrues via the end-of-year return loop.
+
+    The payment is a cash outflow (folded into the year's funding need). Principal cannot go below
+    zero, so the loan stops drawing payments once paid off.
+    """
+    total = ZERO
+    for account in accounts.values():
+        if account.account_type != "debt" or account.debt_annual_payment <= ZERO:
+            continue
+        payment = quantize_cents(min(account.debt_annual_payment, account.balance))
+        if payment <= ZERO:
+            continue
+        account.balance -= payment
+        distributions[account.id] += payment
+        total += payment
+    return quantize_cents(total)
+
+
+def _net_worth(accounts: dict[str, AccountYearState]) -> Decimal:
+    """Total net worth: assets minus debt liabilities (debt balances are amounts owed)."""
+    total = ZERO
+    for account in accounts.values():
+        if account.account_type == "debt":
+            total -= account.balance
+        else:
+            total += account.balance
+    return quantize_cents(total)
+
+
 def _contribution_inflation_rate(plan: ContributionPlan, assumptions: AssumptionSet) -> Decimal:
     if plan.inflation_kind == "custom":
         return plan.custom_inflation_rate or ZERO
@@ -445,7 +478,8 @@ def run_projection(
         contribution = _apply_contributions(
             scenario, accounts, contributions, income, expenses, year
         )
-        cash_need = quantize_cents(expenses + contribution.employee_total)
+        debt_payments = _service_debt(accounts, distributions)
+        cash_need = quantize_cents(expenses + contribution.employee_total + debt_payments)
 
         pre_flexible_accounts = _clone_accounts(accounts)
         final_accounts, flex, tax_result, converged, iterations = _solve_flexible_withdrawals(
@@ -545,9 +579,7 @@ def run_projection(
                 provisional_income=tax_result.provisional_income,
                 ss_taxable_portion=tax_result.ss_taxable_portion,
                 surplus=max(surplus, ZERO),
-                ending_net_worth=quantize_cents(
-                    sum((account.balance for account in accounts.values()), ZERO)
-                ),
+                ending_net_worth=_net_worth(accounts),
             )
         )
 
@@ -965,6 +997,8 @@ def _clone_account(account: AccountYearState) -> AccountYearState:
         hsa_qualified_medical_expense_pct=account.hsa_qualified_medical_expense_pct,
         spouse_beneficiary_person_id=account.spouse_beneficiary_person_id,
         spouse_is_sole_beneficiary=account.spouse_is_sole_beneficiary,
+        debt_annual_payment=account.debt_annual_payment,
+        exclude_from_withdrawals=account.exclude_from_withdrawals,
     )
 
 
