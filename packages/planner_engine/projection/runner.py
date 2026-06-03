@@ -124,6 +124,9 @@ class ScenarioInput:
     roth_conversion_plans: list[RothConversionPlan] = field(default_factory=list)
     contribution_plans: list[ContributionPlan] = field(default_factory=list)
     spouse_person_id: str | None = None
+    # Optional per-account, per-year return overrides (account_id -> year -> rate). Used by the
+    # Monte Carlo driver to inject sampled returns while keeping the engine deterministic + Decimal.
+    return_overrides: dict[str, dict[int, Decimal]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -536,7 +539,8 @@ def run_projection(
 
         for account_id, account in accounts.items():
             pre_return = account.balance
-            investment_return = quantize_cents(pre_return * account.expected_return)
+            rate = scenario.return_overrides.get(account_id, {}).get(year, account.expected_return)
+            investment_return = quantize_cents(pre_return * rate)
             account.balance = quantize_cents(account.balance + investment_return)
             account_balances.append(
                 ProjectionAccountBalance(
@@ -986,6 +990,7 @@ def _clone_account(account: AccountYearState) -> AccountYearState:
         account_type=account.account_type,
         balance=account.balance,
         expected_return=account.expected_return,
+        return_stddev=account.return_stddev,
         cost_basis_pct=account.cost_basis_pct,
         roth_first_contribution_year=account.roth_first_contribution_year,
         roth_contributions_basis=account.roth_contributions_basis,

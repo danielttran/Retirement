@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, cast
@@ -56,6 +57,7 @@ from app.models import (
     SeppPlan,
     WithdrawalStrategy,
 )
+from app.montecarlo import run_monte_carlo
 from app.schemas import (
     AccountCreate,
     AccountRead,
@@ -69,6 +71,7 @@ from app.schemas import (
     HouseholdRead,
     IncomeStreamCreate,
     IncomeStreamRead,
+    MonteCarloRead,
     ProjectionAccountBalanceRead,
     ProjectionRead,
     ProjectionRunMetadataRead,
@@ -798,10 +801,16 @@ def delete_contribution(
     response_model=ProjectionRead,
     tags=["projection"],
 )
-def run_scenario_projection(scenario_id: str, session: SessionDep) -> ProjectionRead:
+def run_scenario_projection(
+    scenario_id: str,
+    session: SessionDep,
+    variant: str = "average",
+) -> ProjectionRead:
     scenario = load_scenario_for_projection(scenario_id, session)
     assumptions = get_or_create_assumptions(scenario, session)
-    projection_input = build_projection_input(scenario, assumptions, session)
+    projection_input = apply_rate_variant(
+        build_projection_input(scenario, assumptions, session), variant
+    )
     run = run_projection(projection_input, assumptions.irs_data_version, assumptions.engine_version)
 
     clear_projection_output(scenario.id, session)
@@ -865,6 +874,30 @@ def run_scenario_projection(scenario_id: str, session: SessionDep) -> Projection
     )
     session.commit()
     return get_projection(scenario_id, session)
+
+
+@app.post(
+    "/scenarios/{scenario_id}/monte-carlo",
+    response_model=MonteCarloRead,
+    tags=["projection"],
+)
+def run_scenario_monte_carlo(
+    scenario_id: str,
+    session: SessionDep,
+    trials: int = 500,
+) -> MonteCarloRead:
+    trials = max(50, min(2000, trials))
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    projection_input = build_projection_input(scenario, assumptions, session)
+    result = run_monte_carlo(
+        projection_input,
+        assumptions.irs_data_version,
+        assumptions.engine_version,
+        trials=trials,
+        seed=12345,
+    )
+    return MonteCarloRead(**result.__dict__)
 
 
 @app.get(
@@ -1163,6 +1196,46 @@ def build_projection_input(
     )
 
 
+# Account types whose returns shift under optimistic/pessimistic assumption sets.
+_VARIANT_VOLATILE_TYPES = {
+    "taxable_brokerage",
+    "traditional_ira",
+    "traditional_401k",
+    "traditional_403b",
+    "governmental_457b",
+    "roth_ira",
+    "roth_401k",
+    "hsa",
+    "real_estate",
+}
+_DEFAULT_VARIANT_DELTA = Decimal("0.02")
+_VARIANT_CPI_DELTA = Decimal("0.005")
+
+
+def apply_rate_variant(scenario: ScenarioInput, variant: str) -> ScenarioInput:
+    """Return a scenario adjusted for Boldin-style optimistic/average/pessimistic assumptions.
+
+    Optimistic raises returns and lowers inflation; pessimistic does the reverse. "average" is the
+    unmodified scenario. The return shift uses each account's own stddev when set, else a default.
+    """
+    if variant not in {"optimistic", "pessimistic"}:
+        return scenario
+    sign = Decimal("1") if variant == "optimistic" else Decimal("-1")
+    overrides: dict[str, dict[int, Decimal]] = {}
+    years = range(scenario.start_year, scenario.end_year + 1)
+    for account in scenario.accounts:
+        if account.account_type not in _VARIANT_VOLATILE_TYPES:
+            continue
+        delta = account.return_stddev if account.return_stddev else _DEFAULT_VARIANT_DELTA
+        rate = account.expected_return + sign * delta
+        overrides[account.id] = {year: rate for year in years}
+    cpi = scenario.assumptions.cpi_rate - sign * _VARIANT_CPI_DELTA
+    if cpi < Decimal("0"):
+        cpi = Decimal("0")
+    new_assumptions = replace(scenario.assumptions, cpi_rate=cpi)
+    return replace(scenario, assumptions=new_assumptions, return_overrides=overrides)
+
+
 def account_to_engine_state(account: Account) -> AccountYearState:
     roth_basis = account.roth_basis
     return AccountYearState(
@@ -1171,6 +1244,7 @@ def account_to_engine_state(account: Account) -> AccountYearState:
         account_type=account.account_type,
         balance=account.current_balance,
         expected_return=account.expected_return,
+        return_stddev=account.return_stddev,
         cost_basis_pct=account.cost_basis_pct,
         roth_first_contribution_year=account.roth_first_contribution_year,
         roth_contributions_basis=(

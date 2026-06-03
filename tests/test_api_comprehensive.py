@@ -2357,3 +2357,65 @@ def test_contribution_feeds_projection(client: TestClient, scenario: dict) -> No
     # 18k employee + 9k employer match contributed in the first year.
     assert Decimal(k_bal["contributions"]) == Decimal("27000.00")
     assert cash_id  # cash account exists for surplus routing
+
+
+def test_monte_carlo_endpoint(client: TestClient, scenario: dict) -> None:
+    sid = scenario["id"]
+    person_id = scenario["household"]["people"][0]["id"]
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": person_id,
+            "name": "Brokerage",
+            "account_type": "taxable_brokerage",
+            "current_balance": "1000000",
+            "expected_return": "0.06",
+            "return_stddev": "0.10",
+            "cost_basis_pct": "0.8",
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/expense-streams",
+        json={"name": "Living", "kind": "must_spend", "annual_amount": "40000", "start_year": 2024},
+    )
+    resp = client.post(f"/scenarios/{sid}/monte-carlo?trials=60")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["trials"] == 60
+    assert 0 <= float(body["chance_of_success"]) <= 100
+
+
+def test_rate_variant_optimistic_beats_pessimistic() -> None:
+    from app.main import apply_rate_variant
+    from planner_engine.common import AccountYearState, Person
+    from planner_engine.projection import (
+        AssumptionSet,
+        ExpenseStream,
+        ScenarioInput,
+        run_projection,
+    )
+
+    base = ScenarioInput(
+        id="s1",
+        filing_status="single",
+        state="MA",
+        start_year=2024,
+        end_year=2034,
+        primary_person_id="p1",
+        people=[Person("p1", dob_year=1959, age_by_year={y: y - 1959 for y in range(2024, 2035)})],
+        accounts=[
+            AccountYearState(
+                "brk", "p1", "taxable_brokerage", Decimal("1000000"), Decimal("0.06"),
+                cost_basis_pct=Decimal("0.8"),
+            )
+        ],
+        expense_streams=[
+            ExpenseStream("e", "must_spend", Decimal("40000"), 2024, inflation_kind="none")
+        ],
+        assumptions=AssumptionSet(cpi_rate=Decimal("0.025")),
+    )
+    opt = run_projection(apply_rate_variant(base, "optimistic"), "2024-33", "test")
+    pess = run_projection(apply_rate_variant(base, "pessimistic"), "2024-33", "test")
+    avg = run_projection(apply_rate_variant(base, "average"), "2024-33", "test")
+    assert opt.summary.estate_net_worth > avg.summary.estate_net_worth
+    assert avg.summary.estate_net_worth > pess.summary.estate_net_worth

@@ -100,9 +100,9 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 ## 11. Monte Carlo / Chance of Success
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
-| Monte Carlo simulation | ✓ | ❌ | ❌ |
-| Chance-of-success % (never-negative) | ✓ | ❌ | ❌ |
-| Optimistic/Average/Pessimistic assumption sets | ✓ | ❌ | ❌ |
+| Monte Carlo simulation | ✓ | ✓ (500 trials, per-year returns) | ✅ |
+| Chance-of-success % (never-negative) | ✓ | ✓ | ✅ |
+| Optimistic/Average/Pessimistic assumption sets | ✓ | ✓ (deterministic variants) | ✅ |
 
 ## 12. Projections / Metrics
 | Feature | Boldin | This app | Status |
@@ -124,7 +124,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
 | Clone + compare scenarios | ✓ | ✓ | ✅ |
-| Compare optimistic/avg/pess side by side | ✓ | ❌ | ❌ |
+| Compare optimistic/avg/pess side by side | ✓ | 🟡 (run each variant) | 🟡 |
 
 ## 15. Inflation Assumptions
 | Feature | Boldin | This app | Status |

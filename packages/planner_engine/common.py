@@ -30,6 +30,7 @@ class AccountYearState:
     account_type: str
     balance: Decimal
     expected_return: Decimal = Decimal("0")
+    return_stddev: Decimal | None = None
     cost_basis_pct: Decimal | None = None
     roth_first_contribution_year: int | None = None
     roth_contributions_basis: Decimal = Decimal("0")

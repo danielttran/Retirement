@@ -224,6 +224,16 @@ export type ProjectionRun = {
   summary: ProjectionSummary | null;
 };
 
+export type MonteCarloResult = {
+  trials: number;
+  success_count: number;
+  chance_of_success: string;
+  p10_estate: string;
+  p50_estate: string;
+  p90_estate: string;
+  median_out_of_savings_age: number | null;
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,

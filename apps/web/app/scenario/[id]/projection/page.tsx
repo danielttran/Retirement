@@ -17,6 +17,7 @@ import {
   apiRequest,
   downloadCsv,
   formatMoney,
+  type MonteCarloResult,
   type ProjectionRun,
   type ProjectionWarning
 } from "../../../lib/api";
@@ -37,6 +38,9 @@ export default function ProjectionPage() {
   const [error, setError] = useState<string | null>(null);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
   const [showInfos, setShowInfos] = useState(false);
+  const [monteCarlo, setMonteCarlo] = useState<MonteCarloResult | null>(null);
+  const [isRunningMc, setIsRunningMc] = useState(false);
+  const [variant, setVariant] = useState("average");
 
   useEffect(() => {
     apiRequest<ProjectionRun>(`/scenarios/${params.id}/projection`)
@@ -55,14 +59,31 @@ export default function ProjectionPage() {
     setError(null);
     setWarningsDismissed(false);
     try {
-      const result = await apiRequest<ProjectionRun>(`/scenarios/${params.id}/run-projection`, {
-        method: "POST"
-      });
+      const result = await apiRequest<ProjectionRun>(
+        `/scenarios/${params.id}/run-projection?variant=${variant}`,
+        { method: "POST" }
+      );
       setProjection(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Projection failed");
     } finally {
       setIsRunning(false);
+    }
+  }
+
+  async function runMonteCarlo() {
+    setIsRunningMc(true);
+    setError(null);
+    try {
+      const result = await apiRequest<MonteCarloResult>(
+        `/scenarios/${params.id}/monte-carlo?trials=500`,
+        { method: "POST" }
+      );
+      setMonteCarlo(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Monte Carlo failed");
+    } finally {
+      setIsRunningMc(false);
     }
   }
 
@@ -141,6 +162,18 @@ export default function ProjectionPage() {
           >
             {isRunning ? "Running…" : projection ? "Re-run Projection" : "Run Projection"}
           </button>
+          <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
+            Assumptions
+            <select
+              className="h-10 rounded-md border border-stone-300 px-2"
+              onChange={(e) => setVariant(e.target.value)}
+              value={variant}
+            >
+              <option value="average">Average</option>
+              <option value="optimistic">Optimistic</option>
+              <option value="pessimistic">Pessimistic</option>
+            </select>
+          </label>
           {projection ? (
             <>
               <button
@@ -285,6 +318,76 @@ export default function ProjectionPage() {
                 </div>
               </section>
             ) : null}
+
+            {/* Monte Carlo — chance of success */}
+            <section className="rounded-md border border-stone-300 bg-white p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-stone-950">
+                  Chance of Success (Monte Carlo)
+                </h2>
+                <button
+                  className="h-9 rounded-md bg-stone-800 px-4 text-sm font-semibold text-white hover:bg-stone-900 disabled:opacity-60"
+                  disabled={isRunningMc}
+                  onClick={() => {
+                    void runMonteCarlo();
+                  }}
+                  type="button"
+                >
+                  {isRunningMc ? "Running 500 simulations…" : "Run Monte Carlo"}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-stone-500">
+                Runs 500 simulations, randomizing investment returns and inflation each year. A run
+                succeeds only if liquid savings never reach $0.
+              </p>
+              {monteCarlo ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                  <div
+                    className={`rounded-md border p-4 ${
+                      Number(monteCarlo.chance_of_success) >= 80
+                        ? "border-emerald-300 bg-emerald-50"
+                        : Number(monteCarlo.chance_of_success) >= 60
+                          ? "border-amber-300 bg-amber-50"
+                          : "border-red-300 bg-red-50"
+                    }`}
+                  >
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                      Chance of success
+                    </p>
+                    <p className="mt-1 text-3xl font-semibold text-stone-950">
+                      {monteCarlo.chance_of_success}%
+                    </p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      {monteCarlo.success_count}/{monteCarlo.trials} simulations
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-stone-300 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                      Estate — pessimistic (10th)
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-stone-950">
+                      {formatMoney(monteCarlo.p10_estate)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-stone-300 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                      Estate — median (50th)
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-stone-950">
+                      {formatMoney(monteCarlo.p50_estate)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-stone-300 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                      Estate — optimistic (90th)
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-stone-950">
+                      {formatMoney(monteCarlo.p90_estate)}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </section>
 
             {/* Net Worth chart */}
             <section className="rounded-md border border-stone-300 bg-white p-5">

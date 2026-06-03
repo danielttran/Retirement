@@ -373,6 +373,16 @@ class ProjectionRead(ApiModel):
     summary: ProjectionSummaryRead | None = None
 
 
+class MonteCarloRead(BaseModel):
+    trials: int
+    success_count: int
+    chance_of_success: Decimal
+    p10_estate: Decimal
+    p50_estate: Decimal
+    p90_estate: Decimal
+    median_out_of_savings_age: int | None
+
+
 class ScenarioDetail(ScenarioRead):
     household: HouseholdRead
     accounts: list[AccountRead]
