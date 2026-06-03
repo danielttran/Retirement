@@ -68,6 +68,41 @@ class SeppProjectionPlan:
     annual_payment: Decimal
 
 
+# Account types whose employee elective deferrals are excluded from federal taxable wages.
+FEDERAL_PRETAX_ACCOUNT_TYPES = {
+    "traditional_401k",
+    "traditional_403b",
+    "governmental_457b",
+    "traditional_ira",
+    "hsa",
+}
+# MA excludes employer-plan elective deferrals from state wages but NOT traditional IRA/HSA.
+STATE_PRETAX_ACCOUNT_TYPES = {
+    "traditional_401k",
+    "traditional_403b",
+    "governmental_457b",
+}
+ROTH_ACCOUNT_TYPES = {"roth_ira", "roth_401k"}
+
+
+@dataclass(frozen=True)
+class ContributionPlan:
+    """A recurring savings contribution into an account during the accumulation phase.
+
+    ``annual_amount`` is the employee contribution in ``start_year`` dollars.
+    ``employer_match_amount`` is added on top (free money: it increases net worth and is never an
+    outflow from the budget). Pre-tax employee contributions reduce taxable wages per account type.
+    """
+
+    account_id: str
+    annual_amount: Decimal
+    start_year: int
+    end_year: int | None = None
+    inflation_kind: str = "cpi"
+    custom_inflation_rate: Decimal | None = None
+    employer_match_amount: Decimal = ZERO
+
+
 @dataclass(frozen=True)
 class ScenarioInput:
     id: str
@@ -85,6 +120,7 @@ class ScenarioInput:
     surplus_target_account_id: str | None = None
     sepp_plans: list[SeppProjectionPlan] = field(default_factory=list)
     roth_conversion_plans: list[RothConversionPlan] = field(default_factory=list)
+    contribution_plans: list[ContributionPlan] = field(default_factory=list)
     spouse_person_id: str | None = None
 
 
@@ -163,8 +199,90 @@ class _IncomeBuckets:
     ltcg: Decimal = ZERO
 
 
+@dataclass(frozen=True)
+class _ContributionResult:
+    employee_total: Decimal = ZERO
+    employer_total: Decimal = ZERO
+    federal_wage_reduction: Decimal = ZERO
+    state_wage_reduction: Decimal = ZERO
+
+
 def quantize_cents(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def _apply_contributions(
+    scenario: ScenarioInput,
+    accounts: dict[str, AccountYearState],
+    contributions: dict[str, Decimal],
+    income: _IncomeBuckets,
+    expenses: Decimal,
+    year: int,
+) -> _ContributionResult:
+    """Apply employee + employer contributions for the year.
+
+    Employee contributions are funded from current-year income (capped at ``income - expenses``
+    so the engine never withdraws from savings just to fund a contribution). Employer match scales
+    with the funded fraction of the employee contribution. Returns totals + taxable-wage reductions.
+    """
+    active = [
+        plan
+        for plan in scenario.contribution_plans
+        if _stream_active(plan.start_year, plan.end_year, year)
+    ]
+    if not active:
+        return _ContributionResult()
+
+    intended: list[tuple[ContributionPlan, Decimal, Decimal]] = []
+    intended_employee_total = ZERO
+    for plan in active:
+        rate = _contribution_inflation_rate(plan, scenario.assumptions)
+        employee = _inflate(plan.annual_amount, rate, year - plan.start_year)
+        employer = _inflate(plan.employer_match_amount, rate, year - plan.start_year)
+        intended.append((plan, employee, employer))
+        intended_employee_total += employee
+
+    available = max(ZERO, income.gross - expenses)
+    fund_fraction = ONE
+    if intended_employee_total > available and intended_employee_total > ZERO:
+        fund_fraction = available / intended_employee_total
+
+    employee_total = ZERO
+    employer_total = ZERO
+    federal_reduction = ZERO
+    state_reduction = ZERO
+    for plan, employee, employer in intended:
+        funded_employee = quantize_cents(employee * fund_fraction)
+        funded_employer = quantize_cents(employer * fund_fraction)
+        account = accounts.get(plan.account_id)
+        if account is None:
+            continue
+        total_in = funded_employee + funded_employer
+        account.balance += total_in
+        contributions[plan.account_id] += total_in
+        if account.account_type in ROTH_ACCOUNT_TYPES:
+            account.roth_contributions_basis += funded_employee
+        employee_total += funded_employee
+        employer_total += funded_employer
+        if account.account_type in FEDERAL_PRETAX_ACCOUNT_TYPES:
+            federal_reduction += funded_employee
+        if account.account_type in STATE_PRETAX_ACCOUNT_TYPES:
+            state_reduction += funded_employee
+
+    return _ContributionResult(
+        employee_total=quantize_cents(employee_total),
+        employer_total=quantize_cents(employer_total),
+        federal_wage_reduction=quantize_cents(federal_reduction),
+        state_wage_reduction=quantize_cents(state_reduction),
+    )
+
+
+def _contribution_inflation_rate(plan: ContributionPlan, assumptions: AssumptionSet) -> Decimal:
+    if plan.inflation_kind == "custom":
+        return plan.custom_inflation_rate or ZERO
+    if plan.inflation_kind == "none":
+        return ZERO
+    return assumptions.cpi_rate
 
 
 def run_projection(
@@ -211,13 +329,17 @@ def run_projection(
             year,
             warnings,
         )
+        contribution = _apply_contributions(
+            scenario, accounts, contributions, income, expenses, year
+        )
+        cash_need = quantize_cents(expenses + contribution.employee_total)
 
         pre_flexible_accounts = _clone_accounts(accounts)
         final_accounts, flex, tax_result, converged, iterations = _solve_flexible_withdrawals(
             scenario,
             pre_flexible_accounts,
             income,
-            expenses,
+            cash_need,
             sepp_distributions,
             rmd_distributions,
             roth_conversions,
@@ -225,13 +347,14 @@ def run_projection(
             people,
             year,
             irs_data_version,
+            contribution,
         )
         accounts = final_accounts
         _add_withdrawal_distributions(distributions, flex)
 
         final_tax = _total_tax(tax_result)
         surplus = quantize_cents(
-            income.gross + sepp_distributions + rmd_distributions - expenses - final_tax
+            income.gross + sepp_distributions + rmd_distributions - cash_need - final_tax
         )
         if surplus > ZERO:
             _route_surplus(scenario, accounts, contributions, surplus, expenses)
@@ -247,7 +370,7 @@ def run_projection(
                 )
             )
         funding_gap = quantize_cents(
-            expenses + final_tax - income.gross - sepp_distributions - rmd_distributions
+            cash_need + final_tax - income.gross - sepp_distributions - rmd_distributions
         )
         if funding_gap > flex.withdrawn + scenario.assumptions.tax_iteration_tolerance:
             warnings.append(
@@ -331,7 +454,7 @@ def _solve_flexible_withdrawals(
     scenario: ScenarioInput,
     pre_flexible_accounts: dict[str, AccountYearState],
     income: _IncomeBuckets,
-    expenses: Decimal,
+    cash_need: Decimal,
     sepp_distributions: Decimal,
     rmd_distributions: Decimal,
     roth_conversions: Decimal,
@@ -339,6 +462,7 @@ def _solve_flexible_withdrawals(
     people: dict[str, Person],
     year: int,
     irs_data_version: str,
+    contribution: _ContributionResult,
 ) -> tuple[dict[str, AccountYearState], WithdrawalResult, TaxResult, bool, int]:
     prior_gap: Decimal | None = None
     best_accounts = _clone_accounts(pre_flexible_accounts)
@@ -352,12 +476,13 @@ def _solve_flexible_withdrawals(
         best_flex,
         year,
         irs_data_version,
+        contribution,
     )
 
     for iteration in range(scenario.assumptions.tax_iteration_max + 1):
         total_tax = _total_tax(best_tax)
         gap = quantize_cents(
-            expenses + total_tax - income.gross - sepp_distributions - rmd_distributions
+            cash_need + total_tax - income.gross - sepp_distributions - rmd_distributions
         )
         if gap <= ZERO:
             return (
@@ -393,6 +518,7 @@ def _solve_flexible_withdrawals(
             best_flex,
             year,
             irs_data_version,
+            contribution,
         )
         prior_gap = gap
 
@@ -408,14 +534,18 @@ def _compute_projection_taxes(
     flex: WithdrawalResult,
     year: int,
     irs_data_version: str,
+    contribution: _ContributionResult,
 ) -> TaxResult:
+    wages_federal = max(ZERO, income.wages - contribution.federal_wage_reduction)
+    wages_state = max(ZERO, income.wages - contribution.state_wage_reduction)
     return compute_taxes(
         TaxInput(
             year=year,
             filing_status=scenario.filing_status,
             state=scenario.state,
             ages={person.id: person.age_in_year(year) for person in scenario.people},
-            wages=income.wages,
+            wages=wages_federal,
+            wages_state=wages_state,
             pensions_taxable_federal=income.pensions_taxable_federal,
             pensions_taxable_state=income.pensions_taxable_state,
             traditional_distributions=flex.ordinary_income,

@@ -8,6 +8,11 @@ import { apiRequest, deleteHousehold, deleteScenario, formatMoney, type Scenario
 
 const NAV_ITEMS = [
   { href: "accounts", label: "Accounts", description: "Cash, brokerage, IRA, 401(k), Roth, HSA" },
+  {
+    href: "contributions",
+    label: "Contributions",
+    description: "Ongoing savings + employer match (accumulation)"
+  },
   { href: "income", label: "Income", description: "Salary, pension, Social Security, annuity" },
   { href: "expenses", label: "Expenses", description: "Must-spend, discretionary, healthcare" },
   { href: "sepp", label: "SEPP / 72(t)", description: "Substantially equal periodic payment plans" },

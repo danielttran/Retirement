@@ -23,6 +23,7 @@ class TaxInput:
     state: str
     ages: dict[str, int]
     wages: Decimal = ZERO
+    wages_state: Decimal | None = None
     pensions_taxable_federal: Decimal = ZERO
     pensions_taxable_state: Decimal = ZERO
     traditional_distributions: Decimal = ZERO
@@ -287,7 +288,7 @@ def compute_taxes(inp: TaxInput) -> TaxResult:
     )
     state_tax = state_tax_ma(
         TaxableIncomeMA(
-            wages=inp.wages,
+            wages=inp.wages if inp.wages_state is None else inp.wages_state,
             pensions_taxable_state=inp.pensions_taxable_state,
             traditional_distributions=inp.traditional_distributions,
             roth_conversions=inp.roth_conversions,

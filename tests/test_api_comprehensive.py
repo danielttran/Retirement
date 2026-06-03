@@ -1361,7 +1361,7 @@ def test_delete_household(client: TestClient, scenario: dict) -> None:
     resp = client.delete(f"/households/{hid}")
     assert resp.status_code == 204
     assert client.get(f"/scenarios/{sid}").status_code == 404
-    households = client.get("/households").json() if hasattr(client.get("/households"), "json") else []
+    client.get("/households").json() if hasattr(client.get("/households"), "json") else []
     scenario_list = client.get("/scenarios").json()
     assert all(s["id"] != sid for s in scenario_list)
 
@@ -2232,7 +2232,7 @@ def test_run_projection_active_sepp_decrements_account_balance_each_year(
     for row in active_rows:
         assert Decimal(row["distributions"]) == Decimal("10000.00")
     # And ending balance must monotonically decrease (expected_return=0 and no contributions).
-    for prev, curr in zip(active_rows, active_rows[1:]):
+    for prev, curr in zip(active_rows, active_rows[1:], strict=False):
         assert Decimal(curr["ending_balance"]) < Decimal(prev["ending_balance"])
 
 
@@ -2253,3 +2253,107 @@ def test_delete_account_reduces_balance(client: TestClient, scenario: dict) -> N
     detail = client.get(f"/scenarios/{sid}").json()
     assert Decimal(detail["total_account_balance"]) == Decimal("0")
 
+
+
+# ---------------------------------------------------------------------------
+# Contributions (accumulation-phase savings + employer match)
+# ---------------------------------------------------------------------------
+
+
+def _make_account(client: TestClient, sid: str, person_id: str, acct_type: str) -> str:
+    extra: dict = {}
+    if acct_type in {"roth_ira", "roth_401k"}:
+        extra["roth_first_contribution_year"] = 2015
+    resp = client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": person_id,
+            "name": acct_type,
+            "account_type": acct_type,
+            "current_balance": "0",
+            "expected_return": "0",
+            **extra,
+        },
+    )
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+def test_contribution_crud(client: TestClient, scenario: dict) -> None:
+    sid = scenario["id"]
+    person_id = scenario["household"]["people"][0]["id"]
+    acct_id = _make_account(client, sid, person_id, "traditional_401k")
+
+    assert client.get(f"/scenarios/{sid}/contributions").json() == []
+
+    created = client.post(
+        f"/scenarios/{sid}/contributions",
+        json={
+            "account_id": acct_id,
+            "annual_amount": "20000",
+            "start_year": 2024,
+            "end_year": 2030,
+            "inflation_kind": "cpi",
+            "employer_match_amount": "5000",
+        },
+    )
+    assert created.status_code == 201
+    cid = created.json()["id"]
+    assert Decimal(created.json()["employer_match_amount"]) == Decimal("5000")
+
+    listed = client.get(f"/scenarios/{sid}/contributions").json()
+    assert len(listed) == 1
+
+    updated = client.put(
+        f"/scenarios/{sid}/contributions/{cid}",
+        json={
+            "account_id": acct_id,
+            "annual_amount": "25000",
+            "start_year": 2024,
+            "inflation_kind": "none",
+            "employer_match_amount": "0",
+        },
+    )
+    assert updated.status_code == 200
+    assert Decimal(updated.json()["annual_amount"]) == Decimal("25000")
+
+    assert client.delete(f"/scenarios/{sid}/contributions/{cid}").status_code == 204
+    assert client.get(f"/scenarios/{sid}/contributions").json() == []
+
+
+def test_contribution_feeds_projection(client: TestClient, scenario: dict) -> None:
+    sid = scenario["id"]
+    person_id = scenario["household"]["people"][0]["id"]
+    cash_id = _make_account(client, sid, person_id, "cash")
+    k_id = _make_account(client, sid, person_id, "traditional_401k")
+    # Fund cash so the household has income via... use a salary income stream instead.
+    client.post(
+        f"/scenarios/{sid}/income-streams",
+        json={
+            "name": "Salary",
+            "kind": "salary",
+            "annual_amount": "100000",
+            "start_year": 2024,
+            "inflation_kind": "none",
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/contributions",
+        json={
+            "account_id": k_id,
+            "annual_amount": "18000",
+            "start_year": 2024,
+            "inflation_kind": "none",
+            "employer_match_amount": "9000",
+        },
+    )
+    run = client.post(f"/scenarios/{sid}/run-projection")
+    assert run.status_code == 200
+    balances = run.json()["account_balances"]
+    first_year = min(b["year"] for b in balances)
+    k_bal = next(
+        b for b in balances if b["account_id"] == k_id and b["year"] == first_year
+    )
+    # 18k employee + 9k employer match contributed in the first year.
+    assert Decimal(k_bal["contributions"]) == Decimal("27000.00")
+    assert cash_id  # cash account exists for surplus routing

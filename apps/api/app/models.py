@@ -168,6 +168,9 @@ class Scenario(Base):
     roth_conversion_plans: Mapped[list[RothConversionPlan]] = relationship(
         back_populates="scenario", cascade="all, delete-orphan"
     )
+    contributions: Mapped[list[Contribution]] = relationship(
+        back_populates="scenario", cascade="all, delete-orphan"
+    )
 
 
 class AssumptionSet(Base):
@@ -260,6 +263,23 @@ class RothConversionPlan(Base):
     )
 
     scenario: Mapped[Scenario] = relationship(back_populates="roth_conversion_plans")
+
+
+class Contribution(Base):
+    __tablename__ = "contribution"
+    __table_args__ = (Index("ix_contribution_scenario", "scenario_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(ForeignKey("scenario.id"), nullable=False)
+    account_id: Mapped[str] = mapped_column(ForeignKey("account.id"), nullable=False)
+    annual_amount: Mapped[Decimal] = mapped_column(Money(), nullable=False)
+    start_year: Mapped[int] = mapped_column(nullable=False)
+    end_year: Mapped[int | None] = mapped_column(nullable=True)
+    inflation_kind: Mapped[str] = mapped_column(String, default="cpi", nullable=False)
+    custom_inflation_rate: Mapped[Decimal | None] = mapped_column(Money(), nullable=True)
+    employer_match_amount: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
+
+    scenario: Mapped[Scenario] = relationship(back_populates="contributions")
 
 
 class ProjectionRunMetadata(Base):

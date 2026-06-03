@@ -1,13 +1,10 @@
 """Property-based tests per §15.6: monotonicity, conservation, idempotency, determinism."""
 from __future__ import annotations
 
-import copy
 from decimal import Decimal
 
-import pytest
-from hypothesis import assume, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
-
 from planner_engine.common import AccountYearState, Person
 from planner_engine.projection import (
     AssumptionSet,
@@ -16,7 +13,6 @@ from planner_engine.projection import (
     ScenarioInput,
     run_projection,
 )
-from planner_engine.roth import RothConversionPlan
 
 # Hypothesis profile: keep example count low to stay fast in CI
 settings.register_profile("ci", max_examples=30, deadline=10000)
@@ -212,7 +208,7 @@ def test_idempotency_clone_produces_identical_projection() -> None:
     run_b = run_projection(sc_b, IRS_VERSION, ENGINE_VERSION)
 
     assert len(run_a.years) == len(run_b.years)
-    for ya, yb in zip(run_a.years, run_b.years):
+    for ya, yb in zip(run_a.years, run_b.years, strict=False):
         assert ya.year == yb.year
         assert ya.ending_net_worth == yb.ending_net_worth
         assert ya.federal_tax == yb.federal_tax
@@ -233,7 +229,11 @@ def test_determinism_same_scenario_same_output() -> None:
         end_year=2030,
         primary_person_id="p1",
         people=[
-            Person("p1", dob_year=1974, age_by_year={y: 2024 - 1974 + (y - 2024) for y in range(2024, 2031)}),
+            Person(
+                "p1",
+                dob_year=1974,
+                age_by_year={y: 2024 - 1974 + (y - 2024) for y in range(2024, 2031)},
+            ),
         ],
         accounts=[
             AccountYearState(
@@ -271,19 +271,19 @@ def test_determinism_same_scenario_same_output() -> None:
     run2 = run_projection(sc, IRS_VERSION, ENGINE_VERSION)
 
     assert len(run1.years) == len(run2.years)
-    for y1, y2 in zip(run1.years, run2.years):
+    for y1, y2 in zip(run1.years, run2.years, strict=False):
         assert y1.ending_net_worth == y2.ending_net_worth
         assert y1.federal_tax == y2.federal_tax
         assert y1.surplus == y2.surplus
         assert y1.magi == y2.magi
 
-    for b1, b2 in zip(run1.account_balances, run2.account_balances):
+    for b1, b2 in zip(run1.account_balances, run2.account_balances, strict=False):
         assert b1.ending_balance == b2.ending_balance
 
 
 # ---------------------------------------------------------------------------
 # Extra: conservation across multi-year projection
-# Total income received + starting net worth = ending net worth + total taxes + total expenses + corrections
+# Total income + starting net worth = ending net worth + total taxes + total expenses + corrections
 # ---------------------------------------------------------------------------
 
 def test_multi_year_conservation_no_returns() -> None:
@@ -318,9 +318,11 @@ def test_multi_year_conservation_no_returns() -> None:
 
     run = run_projection(sc, IRS_VERSION, ENGINE_VERSION)
 
-    # Each year: account_balance(ending) = account_balance(beginning) + contributions - distributions
+    # Each year: ending = beginning + contributions - distributions + investment_return
     for ab in run.account_balances:
-        reconstructed = ab.beginning_balance + ab.contributions - ab.distributions + ab.investment_return
+        reconstructed = (
+            ab.beginning_balance + ab.contributions - ab.distributions + ab.investment_return
+        )
         assert abs(reconstructed - ab.ending_balance) <= Decimal("0.01"), (
             f"Conservation violated yr={ab.year}: {ab.beginning_balance} + {ab.contributions}"
             f" - {ab.distributions} + {ab.investment_return} ≠ {ab.ending_balance}"

@@ -269,6 +269,31 @@ class RothConversionPlanCreate(BaseModel):
     tax_payment_source_account_id: str | None = None
 
 
+ContributionInflationKind = Literal["cpi", "none", "custom"]
+
+
+class ContributionCreate(BaseModel):
+    account_id: str
+    annual_amount: Decimal = Field(ge=Decimal("0"))
+    start_year: int
+    end_year: int | None = None
+    inflation_kind: ContributionInflationKind = "cpi"
+    custom_inflation_rate: Decimal | None = None
+    employer_match_amount: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+
+
+class ContributionRead(ApiModel):
+    id: str
+    scenario_id: str
+    account_id: str
+    annual_amount: Decimal
+    start_year: int
+    end_year: int | None
+    inflation_kind: str
+    custom_inflation_rate: Decimal | None
+    employer_match_amount: Decimal
+
+
 class ProjectionRunMetadataRead(ApiModel):
     id: str
     scenario_id: str

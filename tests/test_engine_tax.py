@@ -314,11 +314,15 @@ def test_ordinary_income_zero_when_only_ss() -> None:
 
 def test_compute_provisional_income_adds_half_ss() -> None:
     # 30000 ordinary + 5000 ltcg + 20000/2 SS = 45000
-    assert compute_provisional_income(Decimal("30000"), Decimal("5000"), Decimal("20000")) == Decimal("45000")
+    assert compute_provisional_income(
+        Decimal("30000"), Decimal("5000"), Decimal("20000")
+    ) == Decimal("45000")
 
 
 def test_compute_provisional_income_zero_ss() -> None:
-    assert compute_provisional_income(Decimal("50000"), Decimal("0"), Decimal("0")) == Decimal("50000")
+    assert compute_provisional_income(
+        Decimal("50000"), Decimal("0"), Decimal("0")
+    ) == Decimal("50000")
 
 
 # ---------------------------------------------------------------------------

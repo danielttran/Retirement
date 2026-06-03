@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from planner_engine.projection.runner import (
     AssumptionSet,
+    ContributionPlan,
     ExpenseStream,
     IncomeStream,
     ProjectionAccountBalance,
@@ -16,6 +17,7 @@ from planner_engine.projection.runner import (
 
 __all__ = [
     "AssumptionSet",
+    "ContributionPlan",
     "ExpenseStream",
     "IncomeStream",
     "ProjectionAccountBalance",

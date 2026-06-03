@@ -123,6 +123,18 @@ export type SeppPlan = {
   switched_to_rmd_year: number | null;
 };
 
+export type Contribution = {
+  id: string;
+  scenario_id: string;
+  account_id: string;
+  annual_amount: string;
+  start_year: number;
+  end_year: number | null;
+  inflation_kind: string;
+  custom_inflation_rate: string | null;
+  employer_match_amount: string;
+};
+
 export type RothConversionPlan = {
   id: string;
   scenario_id: string;

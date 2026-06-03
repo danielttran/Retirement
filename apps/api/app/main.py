@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
@@ -14,6 +14,9 @@ from planner_engine.common import AccountYearState, RothConversionLotState
 from planner_engine.common import Person as EnginePerson
 from planner_engine.projection import (
     AssumptionSet as EngineAssumptionSet,
+)
+from planner_engine.projection import (
+    ContributionPlan as EngineContributionPlan,
 )
 from planner_engine.projection import (
     ExpenseStream as EngineExpenseStream,
@@ -37,6 +40,7 @@ from app.database import DATABASE_PATH, get_session, init_db
 from app.models import (
     Account,
     AssumptionSet,
+    Contribution,
     ExpenseStream,
     Household,
     IncomeStream,
@@ -56,6 +60,8 @@ from app.schemas import (
     AccountRead,
     AssumptionSetRead,
     AssumptionSetUpdate,
+    ContributionCreate,
+    ContributionRead,
     ExpenseStreamCreate,
     ExpenseStreamRead,
     HouseholdCreate,
@@ -71,6 +77,7 @@ from app.schemas import (
     RothConversionPlanRead,
     ScenarioDetail,
     ScenarioRead,
+    SeppMethod,
     SeppPlanCreate,
     SeppPlanRead,
     WithdrawalStrategyRead,
@@ -710,6 +717,80 @@ def delete_roth_conversion(scenario_id: str, plan_id: str, session: SessionDep) 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@app.get(
+    "/scenarios/{scenario_id}/contributions",
+    response_model=list[ContributionRead],
+    tags=["contributions"],
+)
+def list_contributions(scenario_id: str, session: SessionDep) -> list[Contribution]:
+    require_scenario(scenario_id, session)
+    return list(
+        session.scalars(
+            select(Contribution).where(Contribution.scenario_id == scenario_id)
+        ).all()
+    )
+
+
+@app.post(
+    "/scenarios/{scenario_id}/contributions",
+    response_model=ContributionRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["contributions"],
+)
+def create_contribution(
+    scenario_id: str,
+    payload: ContributionCreate,
+    session: SessionDep,
+) -> Contribution:
+    scenario = require_scenario(scenario_id, session)
+    require_household_account(payload.account_id, scenario.household_id, session)
+    contribution = Contribution(id=new_id(), scenario_id=scenario.id, **payload.model_dump())
+    session.add(contribution)
+    session.commit()
+    session.refresh(contribution)
+    return contribution
+
+
+@app.put(
+    "/scenarios/{scenario_id}/contributions/{contribution_id}",
+    response_model=ContributionRead,
+    tags=["contributions"],
+)
+def update_contribution(
+    scenario_id: str,
+    contribution_id: str,
+    payload: ContributionCreate,
+    session: SessionDep,
+) -> Contribution:
+    scenario = require_scenario(scenario_id, session)
+    require_household_account(payload.account_id, scenario.household_id, session)
+    contribution = session.get(Contribution, contribution_id)
+    if contribution is None or contribution.scenario_id != scenario_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contribution not found")
+    for key, value in payload.model_dump().items():
+        setattr(contribution, key, value)
+    session.commit()
+    session.refresh(contribution)
+    return contribution
+
+
+@app.delete(
+    "/scenarios/{scenario_id}/contributions/{contribution_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["contributions"],
+)
+def delete_contribution(
+    scenario_id: str, contribution_id: str, session: SessionDep
+) -> Response:
+    require_scenario(scenario_id, session)
+    contribution = session.get(Contribution, contribution_id)
+    if contribution is None or contribution.scenario_id != scenario_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contribution not found")
+    session.delete(contribution)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post(
     "/scenarios/{scenario_id}/run-projection",
     response_model=ProjectionRead,
@@ -969,12 +1050,15 @@ def build_projection_input(
             if owner is None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"SEPP plan {plan.id}: account owner not found; cannot compute annual payment.",
+                    detail=(
+                        f"SEPP plan {plan.id}: account owner not found; "
+                        "cannot compute annual payment."
+                    ),
                 )
             try:
                 calc = _compute_sepp_payment(
                     SeppCalculationInput(
-                        method=plan.method,
+                        method=cast(SeppMethod, plan.method),
                         account_balance_at_valuation=plan.account_balance_at_valuation,
                         valuation_date=date.fromisoformat(plan.valuation_date),
                         first_payment_date=date.fromisoformat(plan.first_payment_date),
@@ -1016,6 +1100,20 @@ def build_projection_input(
             select(RothConversionPlan).where(RothConversionPlan.scenario_id == scenario.id)
         ).all()
     ]
+    contribution_plans = [
+        EngineContributionPlan(
+            account_id=contribution.account_id,
+            annual_amount=contribution.annual_amount,
+            start_year=contribution.start_year,
+            end_year=contribution.end_year,
+            inflation_kind=contribution.inflation_kind,
+            custom_inflation_rate=contribution.custom_inflation_rate,
+            employer_match_amount=contribution.employer_match_amount,
+        )
+        for contribution in session.scalars(
+            select(Contribution).where(Contribution.scenario_id == scenario.id)
+        ).all()
+    ]
     end_year = max(
         parse_year(person.dob) + person.life_expectancy_age
         for person in scenario.household.people
@@ -1047,6 +1145,7 @@ def build_projection_input(
         ),
         sepp_plans=sepp_plans,
         roth_conversion_plans=roth_plans,
+        contribution_plans=contribution_plans,
     )
 
 
