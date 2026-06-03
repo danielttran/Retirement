@@ -431,6 +431,7 @@ export default function ProjectionPage() {
                         "Federal tax",
                         "State tax",
                         "MAGI",
+                        "IRMAA",
                         "Surplus",
                         "Net worth"
                       ].map((h) => (
@@ -461,6 +462,9 @@ export default function ProjectionPage() {
                         <td className="px-4 py-2 text-right">{formatMoney(row.federal_tax)}</td>
                         <td className="px-4 py-2 text-right">{formatMoney(row.state_tax)}</td>
                         <td className="px-4 py-2 text-right">{formatMoney(row.magi)}</td>
+                        <td className="px-4 py-2 text-right text-stone-600">
+                          {Number(row.medicare_irmaa) > 0 ? formatMoney(row.medicare_irmaa) : "—"}
+                        </td>
                         <td
                           className={`px-4 py-2 text-right font-medium ${Number(row.surplus) < 0 ? "text-red-700" : "text-emerald-700"}`}
                         >

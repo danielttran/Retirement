@@ -319,6 +319,7 @@ class ProjectionYear(Base):
     magi: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     provisional_income: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     ss_taxable_portion: Mapped[Decimal] = mapped_column(Money(), nullable=False)
+    medicare_irmaa: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
     surplus: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     ending_net_worth: Mapped[Decimal] = mapped_column(Money(), nullable=False)
 

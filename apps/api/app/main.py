@@ -842,6 +842,7 @@ def run_scenario_projection(
             magi=row.magi,
             provisional_income=row.provisional_income,
             ss_taxable_portion=row.ss_taxable_portion,
+            medicare_irmaa=row.medicare_irmaa,
             surplus=row.surplus,
             ending_net_worth=row.ending_net_worth,
         )
@@ -1181,6 +1182,7 @@ def build_projection_input(
             healthcare_inflation_rate=assumptions.healthcare_inflation_rate,
             ss_cola_rate=assumptions.ss_cola_rate,
             pension_cola_rate=assumptions.pension_cola_rate,
+            bracket_indexing_rate=assumptions.bracket_indexing_rate,
             cash_reserve_target_months=assumptions.cash_reserve_target_months,
             tax_iteration_max=assumptions.tax_iteration_max,
             tax_iteration_tolerance=assumptions.tax_iteration_tolerance,

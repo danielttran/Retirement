@@ -164,6 +164,7 @@ export type ProjectionYear = {
   magi: string;
   provisional_income: string;
   ss_taxable_portion: string;
+  medicare_irmaa: string;
   surplus: string;
   ending_net_worth: string;
 };
@@ -212,6 +213,7 @@ export type ProjectionSummary = {
   total_lifetime_income: string;
   total_lifetime_expenses: string;
   total_lifetime_roth_conversions: string;
+  total_lifetime_irmaa: string;
   out_of_savings_year: number | null;
   out_of_savings_age: number | null;
 };

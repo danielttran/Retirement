@@ -323,6 +323,7 @@ class ProjectionYearRead(ApiModel):
     magi: Decimal
     provisional_income: Decimal
     ss_taxable_portion: Decimal
+    medicare_irmaa: Decimal = Decimal("0")
     surplus: Decimal
     ending_net_worth: Decimal
 
@@ -361,6 +362,7 @@ class ProjectionSummaryRead(BaseModel):
     total_lifetime_income: Decimal
     total_lifetime_expenses: Decimal
     total_lifetime_roth_conversions: Decimal
+    total_lifetime_irmaa: Decimal = Decimal("0")
     out_of_savings_year: int | None
     out_of_savings_age: int | None
 

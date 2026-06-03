@@ -10,7 +10,7 @@ from uuid import uuid4
 from planner_engine.common import AccountYearState, Person, RothConversionLotState
 from planner_engine.rmd import compute_rmd_for_year
 from planner_engine.roth import RothConversionPlan, execute_roth_conversion
-from planner_engine.tax import TaxInput, TaxResult, compute_taxes
+from planner_engine.tax import TaxInput, TaxResult, compute_taxes, irmaa_annual_surcharge
 from planner_engine.withdrawal import (
     DEFAULT_WITHDRAWAL_ORDER,
     WithdrawalResult,
@@ -28,6 +28,7 @@ class AssumptionSet:
     healthcare_inflation_rate: Decimal = Decimal("0.04")
     ss_cola_rate: Decimal = Decimal("0.025")
     pension_cola_rate: Decimal = Decimal("0")
+    bracket_indexing_rate: Decimal = Decimal("0.025")
     cash_reserve_target_months: int = 24
     tax_iteration_max: int = 5
     tax_iteration_tolerance: Decimal = Decimal("1.00")
@@ -158,6 +159,7 @@ class ProjectionYear:
     magi: Decimal
     provisional_income: Decimal
     ss_taxable_portion: Decimal
+    medicare_irmaa: Decimal
     surplus: Decimal
     ending_net_worth: Decimal
 
@@ -204,6 +206,7 @@ class ProjectionSummary:
     total_lifetime_income: Decimal
     total_lifetime_expenses: Decimal
     total_lifetime_roth_conversions: Decimal
+    total_lifetime_irmaa: Decimal
     out_of_savings_year: int | None
     out_of_savings_age: int | None
 
@@ -238,6 +241,8 @@ class _YearLike(Protocol):
     def expenses(self) -> Decimal: ...
     @property
     def roth_conversions(self) -> Decimal: ...
+    @property
+    def medicare_irmaa(self) -> Decimal: ...
 
 
 class _BalanceLike(Protocol):
@@ -299,6 +304,7 @@ def compute_summary(
         total_lifetime_roth_conversions=quantize_cents(
             sum((r.roth_conversions for r in years), ZERO)
         ),
+        total_lifetime_irmaa=quantize_cents(sum((r.medicare_irmaa for r in years), ZERO)),
         out_of_savings_year=out_year,
         out_of_savings_age=out_age,
     )
@@ -445,6 +451,7 @@ def run_projection(
     account_balances: list[ProjectionAccountBalance] = []
     warnings: list[ProjectionWarning] = []
     convergence_log: list[dict[str, str | int]] = []
+    magi_history: dict[int, Decimal] = {}
 
     for year in range(scenario.start_year, scenario.end_year + 1):
         beginning = {account_id: account.balance for account_id, account in accounts.items()}
@@ -482,7 +489,20 @@ def run_projection(
             scenario, accounts, contributions, income, expenses, year
         )
         debt_payments = _service_debt(accounts, distributions)
-        cash_need = quantize_cents(expenses + contribution.employee_total + debt_payments)
+        medicare_enrolled = sum(
+            1 for person in scenario.people if person.age_in_year(year) >= 65
+        )
+        irmaa = irmaa_annual_surcharge(
+            magi_history.get(year - 2, ZERO),
+            scenario.filing_status,
+            medicare_enrolled,
+            year,
+            irs_data_version,
+            scenario.assumptions.bracket_indexing_rate,
+        )
+        cash_need = quantize_cents(
+            expenses + contribution.employee_total + debt_payments + irmaa
+        )
 
         pre_flexible_accounts = _clone_accounts(accounts)
         final_accounts, flex, tax_result, converged, iterations = _solve_flexible_withdrawals(
@@ -501,6 +521,19 @@ def run_projection(
         )
         accounts = final_accounts
         _add_withdrawal_distributions(distributions, flex)
+        magi_history[year] = tax_result.magi
+        if irmaa > ZERO:
+            warnings.append(
+                ProjectionWarning(
+                    str(uuid4()),
+                    scenario.id,
+                    year,
+                    "info",
+                    "irmaa_threshold_crossed",
+                    f"Medicare IRMAA surcharge of {irmaa} applies "
+                    f"(based on MAGI from {year - 2}).",
+                )
+            )
 
         final_tax = _total_tax(tax_result)
         surplus = quantize_cents(
@@ -582,6 +615,7 @@ def run_projection(
                 magi=tax_result.magi,
                 provisional_income=tax_result.provisional_income,
                 ss_taxable_portion=tax_result.ss_taxable_portion,
+                medicare_irmaa=irmaa,
                 surplus=max(surplus, ZERO),
                 ending_net_worth=_net_worth(accounts),
             )
@@ -622,6 +656,7 @@ def run_projection(
             total_lifetime_income=ZERO,
             total_lifetime_expenses=ZERO,
             total_lifetime_roth_conversions=ZERO,
+            total_lifetime_irmaa=ZERO,
             out_of_savings_year=None,
             out_of_savings_age=None,
         ),

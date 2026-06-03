@@ -81,7 +81,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | SS taxation | ✓ | ✓ | ✅ |
 | Standard vs itemized optimization | ✓ | ❌ (std only) | ❌ |
 | Lifetime tax total | ✓ | ✓ | ✅ |
-| IRMAA (Part B/D) | ✓ | ❌ | ❌ |
+| IRMAA (Part B/D) | ✓ | ✓ | ✅ |
 | Tax-bracket-fill visualization | ✓ | ❌ | ❌ |
 
 ## 9. Social Security Explorer
@@ -94,7 +94,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
 | Medicare cost estimate (Part B/D, health tiers) | ✓ | ❌ | ❌ |
-| IRMAA surcharges | ✓ | ❌ | ❌ |
+| IRMAA surcharges | ✓ | ✓ | ✅ |
 | Pre-65 ACA as expense | ✓ | 🟡 (manual stream) | 🟡 |
 
 ## 11. Monte Carlo / Chance of Success
