@@ -22,7 +22,10 @@ const accountTypes = [
   "hsa",
   "governmental_457b",
   "real_estate",
-  "debt"
+  "debt",
+  "529",
+  "deferred_comp",
+  "life_insurance"
 ];
 
 export default function AccountsPage() {

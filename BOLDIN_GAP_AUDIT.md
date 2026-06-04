@@ -27,7 +27,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | SS spousal + survivor benefit | ✓ | ❌ | ❌ |
 | Annuity (incl. deferred/future-purchase) | ✓ | 🟡 (basic) | 🟡 |
 | Rental / passive income | ✓ | ✓ (passive) | ✅ |
-| Windfall / one-time income | ✓ | ❌ | ❌ |
+| Windfall / one-time income | ✓ | ✓ | ✅ |
 
 ## 3. Expenses
 | Feature | Boldin | This app | Status |
@@ -48,7 +48,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Per-account rate of return | ✓ | ✓ | ✅ |
 | Account exclusion from auto-withdrawal/RMD/conv | ✓ | 🟡 (withdrawals) | 🟡 |
 | Home sale / downsize event | ✓ | ❌ | ❌ |
-| 529, deferred comp, life insurance (extra types) | ✓ | ❌ | ❌ |
+| 529, deferred comp, life insurance (extra types) | ✓ | ✓ | ✅ |
 
 ## 5. Debt
 | Feature | Boldin | This app | Status |
@@ -62,7 +62,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Customizable drawdown order | ✓ | ✓ | ✅ |
 | Roth 3-layer + HSA rules | ✓ | ✓ | ✅ |
 | RMDs | ✓ | ✓ | ✅ |
-| Rate-of-return-ordered depletion within bucket | ✓ | ❌ | ❌ |
+| Rate-of-return-ordered depletion within bucket | ✓ | ✓ | ✅ |
 | Manual scheduled transfers ("Money Flows") | ✓ | ❌ | ❌ |
 
 ## 7. Roth Conversion Explorer

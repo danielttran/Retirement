@@ -57,10 +57,14 @@ def execute_withdrawals(
     lines: list[WithdrawalLine] = []
     people = {person.id: person for person in persons}
 
+    # Within a bucket, deplete the lowest-expected-return accounts first so higher-returning
+    # accounts compound longer (matches Boldin's rate-of-return-ordered drawdown).
+    ordered_accounts = sorted(accounts_state.values(), key=lambda a: a.expected_return)
+
     for bucket in order:
         if remaining <= Decimal("0"):
             break
-        for account in list(accounts_state.values()):
+        for account in ordered_accounts:
             if remaining <= Decimal("0"):
                 break
             is_locked = account.id in sepp_locked_account_ids or account.exclude_from_withdrawals
@@ -133,6 +137,11 @@ def _withdraw_from_account(
         )
     if account.account_type == "hsa":
         return _withdraw_hsa(account, requested, owner.age_in_year(year))
+    if account.account_type == "deferred_comp":
+        # Non-qualified deferred comp: ordinary income on distribution, no early penalty.
+        amount = _take_balance(account, requested)
+        return WithdrawalLine(account.id, "deferred_comp", amount, ordinary_income=amount)
+    # 529 and life-insurance cash value: tax-free for the modeled use (education / policy loans).
     amount = _take_balance(account, requested)
     return WithdrawalLine(account.id, account.account_type, amount)
 

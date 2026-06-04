@@ -18,8 +18,13 @@ AccountType = Literal[
     "governmental_457b",
     "real_estate",
     "debt",
+    "529",
+    "deferred_comp",
+    "life_insurance",
 ]
-IncomeKind = Literal["salary", "pension", "social_security", "annuity", "passive", "other"]
+IncomeKind = Literal[
+    "salary", "pension", "social_security", "annuity", "passive", "windfall", "other"
+]
 IncomeInflationKind = Literal["cpi", "ss_cola", "pension_cola", "none", "custom"]
 ExpenseKind = Literal["must_spend", "discretionary", "healthcare", "one_time"]
 ExpenseInflationKind = Literal["cpi", "healthcare", "none", "custom"]

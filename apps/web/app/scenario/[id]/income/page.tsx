@@ -11,6 +11,7 @@ const INCOME_KINDS = [
   "social_security",
   "annuity",
   "passive",
+  "windfall",
   "other"
 ] as const;
 
