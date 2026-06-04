@@ -43,3 +43,16 @@ def test_529_withdrawal_is_tax_free() -> None:
     )
     assert result.withdrawn == Decimal("10000.00")
     assert result.ordinary_income == Decimal("0.00")
+
+
+def test_rmd_excluded_account_skipped() -> None:
+    from planner_engine.rmd import compute_rmd_for_year
+
+    ira = AccountYearState(
+        "ira", "p1", "traditional_ira", Decimal("500000"), Decimal("0"),
+        exclude_from_withdrawals=True,
+    )
+    # 75-year-old owner would normally have an RMD; exclusion skips it.
+    person = Person("p1", dob_year=1949, age_by_year={2024: 75})
+    rmds = compute_rmd_for_year(2024, [ira], [person], "2024-33")
+    assert rmds == {}

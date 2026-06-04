@@ -31,6 +31,7 @@ export default function AssumptionsPage() {
       healthcare_inflation_rate: String(Number(form.get("healthcareRate") ?? 0) / 100),
       ss_cola_rate: String(Number(form.get("ssCola") ?? 0) / 100),
       pension_cola_rate: String(Number(form.get("pensionCola") ?? 0) / 100),
+      housing_appreciation_rate: String(Number(form.get("housingRate") ?? 0) / 100),
       bracket_indexing_rate: String(Number(form.get("bracketIndexing") ?? 0) / 100),
       itemized_deductions: String(form.get("itemizedDeductions") ?? "0"),
       cash_reserve_target_months: Number(form.get("cashReserveMonths")),
@@ -98,6 +99,11 @@ export default function AssumptionsPage() {
                 label: "Pension COLA",
                 name: "pensionCola",
                 default: pct(assumptions.pension_cola_rate)
+              },
+              {
+                label: "Housing appreciation",
+                name: "housingRate",
+                default: pct(assumptions.housing_appreciation_rate)
               },
               {
                 label: "Bracket indexing",

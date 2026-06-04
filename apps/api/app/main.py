@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from planner_engine.annuity import estimate_lifetime_annuity_income
 from planner_engine.common import AccountYearState, RothConversionLotState
 from planner_engine.common import Person as EnginePerson
 from planner_engine.projection import (
@@ -70,6 +71,7 @@ from app.schemas import (
     AccountCreate,
     AccountRead,
     AlertRead,
+    AnnuityEstimateRead,
     AssumptionSetRead,
     AssumptionSetUpdate,
     ClaimingOptionRead,
@@ -144,6 +146,18 @@ app.add_middleware(
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/calculators/annuity", response_model=AnnuityEstimateRead, tags=["calculators"])
+def annuity_estimate(premium: Decimal, age: int) -> AnnuityEstimateRead:
+    from planner_engine.annuity import payout_rate
+
+    return AnnuityEstimateRead(
+        premium=premium,
+        age=age,
+        payout_rate=payout_rate(age),
+        annual_income=estimate_lifetime_annuity_income(premium, age),
+    )
 
 
 @app.get("/calculators/medicare", response_model=MedicareEstimateRead, tags=["calculators"])
@@ -1260,6 +1274,10 @@ def build_projection_input(
         ).all()
     )
     account_states = [account_to_engine_state(account) for account in accounts]
+    # Apply the global housing appreciation assumption to real-estate accounts.
+    for state in account_states:
+        if state.account_type == "real_estate":
+            state.expected_return = assumptions.housing_appreciation_rate
     income_streams = [
         EngineIncomeStream(
             id=stream.id,

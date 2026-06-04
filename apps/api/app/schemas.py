@@ -177,6 +177,7 @@ class AssumptionSetRead(ApiModel):
     healthcare_inflation_rate: Decimal
     ss_cola_rate: Decimal
     pension_cola_rate: Decimal
+    housing_appreciation_rate: Decimal
     bracket_indexing_rate: Decimal
     itemized_deductions: Decimal
     cash_reserve_target_months: int
@@ -192,6 +193,7 @@ class AssumptionSetUpdate(BaseModel):
     healthcare_inflation_rate: Decimal = Decimal("0.04")
     ss_cola_rate: Decimal = Decimal("0.025")
     pension_cola_rate: Decimal = Decimal("0")
+    housing_appreciation_rate: Decimal = Decimal("0.04")
     bracket_indexing_rate: Decimal = Decimal("0.025")
     itemized_deductions: Decimal = Decimal("0")
     cash_reserve_target_months: int = 24
@@ -445,6 +447,13 @@ class InsightsRead(BaseModel):
     rating: str
     components: list[ScoreComponentRead]
     alerts: list[AlertRead]
+
+
+class AnnuityEstimateRead(BaseModel):
+    premium: Decimal
+    age: int
+    payout_rate: Decimal
+    annual_income: Decimal
 
 
 class MedicareEstimateRead(BaseModel):

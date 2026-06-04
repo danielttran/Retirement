@@ -188,6 +188,7 @@ class AssumptionSet(Base):
     healthcare_inflation_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.04"))
     ss_cola_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.025"))
     pension_cola_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
+    housing_appreciation_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.04"))
     bracket_indexing_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.025"))
     itemized_deductions: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
     cash_reserve_target_months: Mapped[int] = mapped_column(default=24, nullable=False)

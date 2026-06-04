@@ -44,6 +44,8 @@ def compute_rmd_for_year(
     for account in accounts:
         if account.account_type not in RMD_ACCOUNT_TYPES:
             continue
+        if account.exclude_from_withdrawals:
+            continue
         owner = people[account.owner_person_id]
         owner_age = owner.age_in_year(year)
         if Decimal(owner_age) < get_applicable_age_from_year(owner.dob_year, irs_data_version):

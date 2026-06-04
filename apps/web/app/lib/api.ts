@@ -85,6 +85,7 @@ export type AssumptionSet = {
   healthcare_inflation_rate: string;
   ss_cola_rate: string;
   pension_cola_rate: string;
+  housing_appreciation_rate: string;
   bracket_indexing_rate: string;
   itemized_deductions: string;
   cash_reserve_target_months: number;

@@ -43,10 +43,10 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
 | Cash, brokerage, Trad/Roth IRA/401k/403b, HSA, 457b | ✓ | ✓ | ✅ |
-| Real estate / primary home | ✓ | 🟡 (balance+appr.) | 🟡 |
+| Real estate / primary home | ✓ | ✓ (appr. + sale) | ✅ |
 | **Contributions + employer match** | ✓ | ✓ | ✅ |
 | Per-account rate of return | ✓ | ✓ | ✅ |
-| Account exclusion from auto-withdrawal/RMD/conv | ✓ | 🟡 (withdrawals) | 🟡 |
+| Account exclusion from auto-withdrawal/RMD/conv | ✓ | ✓ (withdrawals + RMDs) | ✅ |
 | Home sale / downsize event | ✓ | ✓ | ✅ |
 | 529, deferred comp, life insurance (extra types) | ✓ | ✓ | ✅ |
 
@@ -129,7 +129,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 ## 15. Inflation Assumptions
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
-| General + medical + SS COLA + housing | ✓ | 🟡 (no housing rate field) | 🟡 |
+| General + medical + SS COLA + housing | ✓ | ✓ | ✅ |
 
 ## 16. Reports / Charts / Export
 | Feature | Boldin | This app | Status |
@@ -141,7 +141,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 ## 17. Annuity tools
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
-| Lifetime annuity calculator | ✓ | ❌ | ❌ |
+| Lifetime annuity calculator | ✓ | ✓ | ✅ |
 
 ---
 
