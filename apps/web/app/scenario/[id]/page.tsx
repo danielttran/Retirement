@@ -32,6 +32,11 @@ const NAV_ITEMS = [
     description: "Year-by-year conversion schedule"
   },
   { href: "withdrawal", label: "Withdrawal Strategy", description: "Account drawdown order" },
+  {
+    href: "money-flows",
+    label: "Money Flows",
+    description: "Manual transfers, debt paydown, early withdrawals"
+  },
   { href: "assumptions", label: "Assumptions", description: "Inflation rates, IRS data version" },
   {
     href: "projection",

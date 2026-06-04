@@ -27,6 +27,9 @@ from planner_engine.projection import (
     IncomeStream as EngineIncomeStream,
 )
 from planner_engine.projection import (
+    MoneyFlowPlan as EngineMoneyFlowPlan,
+)
+from planner_engine.projection import (
     ScenarioInput,
     SeppProjectionPlan,
     compute_summary,
@@ -54,6 +57,7 @@ from app.models import (
     ExpenseStream,
     Household,
     IncomeStream,
+    MoneyFlow,
     Person,
     ProjectionAccountBalance,
     ProjectionRunMetadata,
@@ -86,6 +90,8 @@ from app.schemas import (
     IncomeStreamRead,
     InsightsRead,
     MedicareEstimateRead,
+    MoneyFlowCreate,
+    MoneyFlowRead,
     MonteCarloRead,
     PersonCreate,
     ProjectionAccountBalanceRead,
@@ -883,6 +889,52 @@ def delete_contribution(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@app.get(
+    "/scenarios/{scenario_id}/money-flows",
+    response_model=list[MoneyFlowRead],
+    tags=["money-flows"],
+)
+def list_money_flows(scenario_id: str, session: SessionDep) -> list[MoneyFlow]:
+    require_scenario(scenario_id, session)
+    return list(
+        session.scalars(select(MoneyFlow).where(MoneyFlow.scenario_id == scenario_id)).all()
+    )
+
+
+@app.post(
+    "/scenarios/{scenario_id}/money-flows",
+    response_model=MoneyFlowRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["money-flows"],
+)
+def create_money_flow(
+    scenario_id: str, payload: MoneyFlowCreate, session: SessionDep
+) -> MoneyFlow:
+    scenario = require_scenario(scenario_id, session)
+    require_household_account(payload.from_account_id, scenario.household_id, session)
+    require_household_account(payload.to_account_id, scenario.household_id, session)
+    flow = MoneyFlow(id=new_id(), scenario_id=scenario.id, **payload.model_dump())
+    session.add(flow)
+    session.commit()
+    session.refresh(flow)
+    return flow
+
+
+@app.delete(
+    "/scenarios/{scenario_id}/money-flows/{flow_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["money-flows"],
+)
+def delete_money_flow(scenario_id: str, flow_id: str, session: SessionDep) -> Response:
+    require_scenario(scenario_id, session)
+    flow = session.get(MoneyFlow, flow_id)
+    if flow is None or flow.scenario_id != scenario_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Money flow not found")
+    session.delete(flow)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post(
     "/scenarios/{scenario_id}/run-projection",
     response_model=ProjectionRead,
@@ -1438,6 +1490,17 @@ def build_projection_input(
             select(Contribution).where(Contribution.scenario_id == scenario.id)
         ).all()
     ]
+    money_flows = [
+        EngineMoneyFlowPlan(
+            from_account_id=flow.from_account_id,
+            to_account_id=flow.to_account_id,
+            year=flow.year,
+            amount=flow.amount,
+        )
+        for flow in session.scalars(
+            select(MoneyFlow).where(MoneyFlow.scenario_id == scenario.id)
+        ).all()
+    ]
     end_year = max(
         parse_year(person.dob) + person.life_expectancy_age
         for person in scenario.household.people
@@ -1475,6 +1538,7 @@ def build_projection_input(
         sepp_plans=sepp_plans,
         roth_conversion_plans=roth_plans,
         contribution_plans=contribution_plans,
+        money_flows=money_flows,
     )
 
 

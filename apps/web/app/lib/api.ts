@@ -143,6 +143,16 @@ export type Contribution = {
   employer_match_amount: string;
 };
 
+export type MoneyFlow = {
+  id: string;
+  scenario_id: string;
+  from_account_id: string;
+  to_account_id: string;
+  year: number;
+  amount: string;
+  notes: string | null;
+};
+
 export type RothConversionPlan = {
   id: string;
   scenario_id: string;

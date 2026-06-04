@@ -63,7 +63,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Roth 3-layer + HSA rules | ✓ | ✓ | ✅ |
 | RMDs | ✓ | ✓ | ✅ |
 | Rate-of-return-ordered depletion within bucket | ✓ | ✓ | ✅ |
-| Manual scheduled transfers ("Money Flows") | ✓ | ❌ | ❌ |
+| Manual scheduled transfers ("Money Flows") | ✓ | ✓ | ✅ |
 
 ## 7. Roth Conversion Explorer
 | Feature | Boldin | This app | Status |

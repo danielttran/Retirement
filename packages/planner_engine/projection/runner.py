@@ -92,6 +92,21 @@ ROTH_ACCOUNT_TYPES = {"roth_ira", "roth_401k"}
 
 
 @dataclass(frozen=True)
+class MoneyFlowPlan:
+    """A manual, scheduled transfer between two accounts in a given year.
+
+    Moves cash from ``from_account_id`` to ``to_account_id``. A pre-tax source (traditional/457b/
+    deferred comp) realizes ordinary income; a taxable-brokerage source realizes LTCG on the gain
+    portion; cash/Roth/HSA/529 sources are tax-free. A debt destination pays the loan down.
+    """
+
+    from_account_id: str
+    to_account_id: str
+    year: int
+    amount: Decimal
+
+
+@dataclass(frozen=True)
 class ContributionPlan:
     """A recurring savings contribution into an account during the accumulation phase.
 
@@ -127,6 +142,7 @@ class ScenarioInput:
     sepp_plans: list[SeppProjectionPlan] = field(default_factory=list)
     roth_conversion_plans: list[RothConversionPlan] = field(default_factory=list)
     contribution_plans: list[ContributionPlan] = field(default_factory=list)
+    money_flows: list[MoneyFlowPlan] = field(default_factory=list)
     spouse_person_id: str | None = None
     # Optional per-account, per-year return overrides (account_id -> year -> rate). Used by the
     # Monte Carlo driver to inject sampled returns while keeping the engine deterministic + Decimal.
@@ -454,6 +470,49 @@ def _process_home_sales(
             contributions[destination.id] += net
 
 
+_MF_ORDINARY_SOURCES = {"traditional_ira", "traditional_401k", "traditional_403b",
+                        "governmental_457b", "deferred_comp"}
+
+
+def _execute_money_flows(
+    scenario: ScenarioInput,
+    accounts: dict[str, AccountYearState],
+    contributions: dict[str, Decimal],
+    distributions: dict[str, Decimal],
+    year: int,
+) -> tuple[Decimal, Decimal]:
+    """Run scheduled transfers for the year; return (ordinary_income, ltcg) they realize."""
+    ordinary = ZERO
+    ltcg = ZERO
+    for flow in scenario.money_flows:
+        if flow.year != year:
+            continue
+        src = accounts.get(flow.from_account_id)
+        dst = accounts.get(flow.to_account_id)
+        if src is None or dst is None:
+            continue
+        amount = quantize_cents(min(flow.amount, src.balance))
+        if amount <= ZERO:
+            continue
+        src.balance -= amount
+        distributions[flow.from_account_id] += amount
+        if src.account_type in _MF_ORDINARY_SOURCES:
+            ordinary += amount
+        elif src.account_type == "taxable_brokerage":
+            basis_pct = src.cost_basis_pct if src.cost_basis_pct is not None else ONE
+            ltcg += quantize_cents(amount * (ONE - basis_pct))
+        if dst.account_type == "debt":
+            paid = min(amount, dst.balance)  # pay down the loan
+            dst.balance -= paid
+            distributions[flow.to_account_id] += paid
+        else:
+            dst.balance += amount
+            contributions[flow.to_account_id] += amount
+            if dst.account_type in ROTH_ACCOUNT_TYPES:
+                dst.roth_contributions_basis += amount
+    return quantize_cents(ordinary), quantize_cents(ltcg)
+
+
 def _net_worth(accounts: dict[str, AccountYearState]) -> Decimal:
     """Total net worth: assets minus debt liabilities (debt balances are amounts owed)."""
     total = ZERO
@@ -523,6 +582,9 @@ def run_projection(
         )
         debt_payments = _service_debt(accounts, distributions)
         _process_home_sales(accounts, contributions, distributions, year)
+        mf_ordinary, mf_ltcg = _execute_money_flows(
+            scenario, accounts, contributions, distributions, year
+        )
         filing_status = _filing_status_for_year(scenario, year)
         medicare_enrolled = sum(
             1
@@ -556,6 +618,8 @@ def run_projection(
             irs_data_version,
             contribution,
             filing_status,
+            mf_ordinary,
+            mf_ltcg,
         )
         accounts = final_accounts
         _add_withdrawal_distributions(distributions, flex)
@@ -716,6 +780,8 @@ def _solve_flexible_withdrawals(
     irs_data_version: str,
     contribution: _ContributionResult,
     filing_status: str,
+    mf_ordinary: Decimal,
+    mf_ltcg: Decimal,
 ) -> tuple[dict[str, AccountYearState], WithdrawalResult, TaxResult, bool, int]:
     prior_gap: Decimal | None = None
     best_accounts = _clone_accounts(pre_flexible_accounts)
@@ -731,6 +797,8 @@ def _solve_flexible_withdrawals(
         irs_data_version,
         contribution,
         filing_status,
+        mf_ordinary,
+        mf_ltcg,
     )
 
     for iteration in range(scenario.assumptions.tax_iteration_max + 1):
@@ -774,6 +842,8 @@ def _solve_flexible_withdrawals(
             irs_data_version,
             contribution,
             filing_status,
+            mf_ordinary,
+            mf_ltcg,
         )
         prior_gap = gap
 
@@ -791,6 +861,8 @@ def _compute_projection_taxes(
     irs_data_version: str,
     contribution: _ContributionResult,
     filing_status: str,
+    mf_ordinary: Decimal = ZERO,
+    mf_ltcg: Decimal = ZERO,
 ) -> TaxResult:
     wages_federal = max(ZERO, income.wages - contribution.federal_wage_reduction)
     wages_state = max(ZERO, income.wages - contribution.state_wage_reduction)
@@ -809,12 +881,12 @@ def _compute_projection_taxes(
             wages_state=wages_state,
             pensions_taxable_federal=income.pensions_taxable_federal,
             pensions_taxable_state=income.pensions_taxable_state,
-            traditional_distributions=flex.ordinary_income,
+            traditional_distributions=flex.ordinary_income + mf_ordinary,
             roth_conversions=roth_conversions,
             sepp_distributions=sepp_distributions,
             rmd_distributions=rmd_distributions,
             annuity_taxable=income.annuity_taxable,
-            ltcg=income.ltcg + flex.ltcg,
+            ltcg=income.ltcg + flex.ltcg + mf_ltcg,
             ss_gross=income.ss_gross,
             penalty_eligible_distributions=flex.penalty_eligible,
             hsa_penalty_eligible_distributions=flex.hsa_penalty_eligible,

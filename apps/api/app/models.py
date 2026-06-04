@@ -177,6 +177,9 @@ class Scenario(Base):
     contributions: Mapped[list[Contribution]] = relationship(
         back_populates="scenario", cascade="all, delete-orphan"
     )
+    money_flows: Mapped[list[MoneyFlow]] = relationship(
+        back_populates="scenario", cascade="all, delete-orphan"
+    )
 
 
 class AssumptionSet(Base):
@@ -288,6 +291,21 @@ class Contribution(Base):
     employer_match_amount: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
 
     scenario: Mapped[Scenario] = relationship(back_populates="contributions")
+
+
+class MoneyFlow(Base):
+    __tablename__ = "money_flow"
+    __table_args__ = (Index("ix_money_flow_scenario", "scenario_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(ForeignKey("scenario.id"), nullable=False)
+    from_account_id: Mapped[str] = mapped_column(ForeignKey("account.id"), nullable=False)
+    to_account_id: Mapped[str] = mapped_column(ForeignKey("account.id"), nullable=False)
+    year: Mapped[int] = mapped_column(nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Money(), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    scenario: Mapped[Scenario] = relationship(back_populates="money_flows")
 
 
 class ProjectionRunMetadata(Base):

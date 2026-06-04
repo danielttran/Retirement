@@ -312,6 +312,24 @@ class ContributionRead(ApiModel):
     employer_match_amount: Decimal
 
 
+class MoneyFlowCreate(BaseModel):
+    from_account_id: str
+    to_account_id: str
+    year: int
+    amount: Decimal = Field(ge=Decimal("0"))
+    notes: str | None = None
+
+
+class MoneyFlowRead(ApiModel):
+    id: str
+    scenario_id: str
+    from_account_id: str
+    to_account_id: str
+    year: int
+    amount: Decimal
+    notes: str | None
+
+
 class ProjectionRunMetadataRead(ApiModel):
     id: str
     scenario_id: str
