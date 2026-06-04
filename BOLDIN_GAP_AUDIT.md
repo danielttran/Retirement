@@ -71,7 +71,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Manual conversion schedule | ✓ | ✓ | ✅ |
 | Bracket-fill optimizer | ✓ | ✓ | ✅ |
 | IRMAA-limit optimizer | ✓ | ✓ | ✅ |
-| Lowest-lifetime-tax / highest-estate optimizer | ✓ | 🟡 (compares lifetime tax + estate) | 🟡 |
+| Lowest-lifetime-tax / highest-estate optimizer | ✓ | ✓ (goal search over brackets) | ✅ |
 
 ## 8. Tax Planning
 | Feature | Boldin | This app | Status |

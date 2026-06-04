@@ -83,3 +83,19 @@ def test_irmaa_strategy_caps_magi() -> None:
     # Conversions should keep suggested MAGI headroom below the IRMAA ceiling.
     for s in result.suggestions:
         assert s.magi <= Decimal("103000")
+
+
+def test_goal_based_highest_estate_and_lowest_tax() -> None:
+    he = suggest_roth_conversions(
+        _scenario(), IRS, ENG, strategy="highest_estate", target_rate=Decimal("0"),
+        irmaa_magi_ceiling=Decimal("0"), start_year=2024, end_year=2030,
+    )
+    lt = suggest_roth_conversions(
+        _scenario(), IRS, ENG, strategy="lowest_lifetime_tax", target_rate=Decimal("0"),
+        irmaa_magi_ceiling=Decimal("0"), start_year=2024, end_year=2030,
+    )
+    assert he.strategy == "highest_estate"
+    assert lt.strategy == "lowest_lifetime_tax"
+    # Goal optimizers must never recommend a plan worse than the baseline.
+    assert he.projected_estate >= he.baseline_estate - Decimal("1")
+    assert lt.projected_lifetime_tax <= lt.baseline_lifetime_tax + Decimal("1")

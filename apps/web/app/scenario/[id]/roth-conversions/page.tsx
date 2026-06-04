@@ -237,6 +237,8 @@ export default function RothConversionsPage() {
               >
                 <option value="bracket">Fill tax bracket</option>
                 <option value="irmaa">Stay under IRMAA</option>
+                <option value="highest_estate">Maximize estate value</option>
+                <option value="lowest_lifetime_tax">Minimize lifetime tax</option>
               </select>
             </label>
             {strategy === "bracket" ? (

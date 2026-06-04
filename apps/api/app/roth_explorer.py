@@ -94,56 +94,82 @@ def suggest_roth_conversions(
         if bal.account_id == source.id
     }
 
-    suggestions: list[ConversionSuggestion] = []
-    for year in range(start_year, end_year + 1):
-        row = year_rows.get(year)
-        if row is None:
-            continue
-        available = source_balance.get(year, ZERO)
-        if available <= ZERO:
-            continue
-        if strategy == "irmaa":
-            headroom = irmaa_magi_ceiling - row.magi
-        else:
-            ceiling = _bracket_ceiling(year, scenario.filing_status, target_rate, irs_data_version)
-            headroom = ceiling - row.ordinary_taxable_income
-        amount = min(max(ZERO, headroom), available).quantize(Decimal("1"))
-        if amount <= ZERO:
-            continue
-        suggestions.append(
-            ConversionSuggestion(
-                year=year,
-                amount=amount,
-                ordinary_taxable_income=row.ordinary_taxable_income,
-                magi=row.magi,
-                headroom=max(ZERO, headroom),
-                traditional_balance=available,
+    def build(strat: str, rate: Decimal) -> list[ConversionSuggestion]:
+        out: list[ConversionSuggestion] = []
+        for year in range(start_year, end_year + 1):
+            row = year_rows.get(year)
+            if row is None:
+                continue
+            available = source_balance.get(year, ZERO)
+            if available <= ZERO:
+                continue
+            if strat == "irmaa":
+                headroom = irmaa_magi_ceiling - row.magi
+            else:
+                ceiling = _bracket_ceiling(year, scenario.filing_status, rate, irs_data_version)
+                headroom = ceiling - row.ordinary_taxable_income
+            amount = min(max(ZERO, headroom), available).quantize(Decimal("1"))
+            if amount <= ZERO:
+                continue
+            out.append(
+                ConversionSuggestion(
+                    year=year,
+                    amount=amount,
+                    ordinary_taxable_income=row.ordinary_taxable_income,
+                    magi=row.magi,
+                    headroom=max(ZERO, headroom),
+                    traditional_balance=available,
+                )
             )
-        )
+        return out
 
-    total = sum((s.amount for s in suggestions), ZERO)
-    projected_plans = list(scenario.roth_conversion_plans) + [
-        EngineRothConversionPlan(
-            source_account_id=source.id,
-            destination_account_id=dest.id,
-            year=s.year,
-            amount=s.amount,
+    def project(suggestions: list[ConversionSuggestion]) -> tuple[Decimal, Decimal]:
+        plans = list(scenario.roth_conversion_plans) + [
+            EngineRothConversionPlan(
+                source_account_id=source.id,
+                destination_account_id=dest.id,
+                year=s.year,
+                amount=s.amount,
+            )
+            for s in suggestions
+        ]
+        run = run_projection(
+            replace(scenario, roth_conversion_plans=plans), irs_data_version, engine_version
         )
-        for s in suggestions
-    ]
-    projected = run_projection(
-        replace(scenario, roth_conversion_plans=projected_plans),
-        irs_data_version,
-        engine_version,
-    )
+        return run.summary.lifetime_total_tax, run.summary.estate_net_worth
+
+    goal_strategies = {"highest_estate", "lowest_lifetime_tax"}
+    if strategy in goal_strategies:
+        # Search candidate brackets and pick the one that best meets the goal.
+        candidates = [Decimal(r) for r in ("0.10", "0.12", "0.22", "0.24", "0.32")]
+        # Seed with the "no conversion" baseline so the optimizer never recommends a worse plan.
+        best: tuple[list[ConversionSuggestion], Decimal, Decimal] = (
+            [],
+            baseline_summary.lifetime_total_tax,
+            baseline_summary.estate_net_worth,
+        )
+        for rate in candidates:
+            sug = build("bracket", rate)
+            if not sug:
+                continue
+            tax, estate = project(sug)
+            if strategy == "highest_estate" and estate > best[2]:
+                best = (sug, tax, estate)
+            elif strategy == "lowest_lifetime_tax" and tax < best[1]:
+                best = (sug, tax, estate)
+        suggestions, proj_tax, proj_estate = best
+    else:
+        suggestions = build(strategy, target_rate)
+        proj_tax, proj_estate = project(suggestions)
+
     return ExplorerResult(
         strategy=strategy,
         source_account_id=source.id,
         destination_account_id=dest.id,
         suggestions=suggestions,
-        total_converted=total,
+        total_converted=sum((s.amount for s in suggestions), ZERO),
         baseline_lifetime_tax=baseline_summary.lifetime_total_tax,
-        projected_lifetime_tax=projected.summary.lifetime_total_tax,
+        projected_lifetime_tax=proj_tax,
         baseline_estate=baseline_summary.estate_net_worth,
-        projected_estate=projected.summary.estate_net_worth,
+        projected_estate=proj_estate,
     )
