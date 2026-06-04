@@ -488,6 +488,12 @@ class AcaEstimateRead(BaseModel):
     annual_per_person: Decimal
 
 
+class AssumptionComparisonRead(BaseModel):
+    average: ProjectionSummaryRead
+    optimistic: ProjectionSummaryRead
+    pessimistic: ProjectionSummaryRead
+
+
 class MonteCarloRead(BaseModel):
     trials: int
     success_count: int

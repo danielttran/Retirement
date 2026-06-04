@@ -303,6 +303,12 @@ export type SocialSecurityExplorerResult = {
   max_lifetime_claiming_age: number;
 };
 
+export type AssumptionComparison = {
+  average: ProjectionSummary;
+  optimistic: ProjectionSummary;
+  pessimistic: ProjectionSummary;
+};
+
 export type MonteCarloResult = {
   trials: number;
   success_count: number;

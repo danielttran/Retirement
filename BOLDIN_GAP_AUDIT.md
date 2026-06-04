@@ -124,7 +124,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
 | Clone + compare scenarios | ✓ | ✓ | ✅ |
-| Compare optimistic/avg/pess side by side | ✓ | 🟡 (run each variant) | 🟡 |
+| Compare optimistic/avg/pess side by side | ✓ | ✓ | ✅ |
 
 ## 15. Inflation Assumptions
 | Feature | Boldin | This app | Status |

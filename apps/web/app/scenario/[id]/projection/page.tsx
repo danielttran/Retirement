@@ -17,6 +17,7 @@ import {
   apiRequest,
   downloadCsv,
   formatMoney,
+  type AssumptionComparison,
   type MonteCarloResult,
   type ProjectionRun,
   type ProjectionWarning
@@ -41,6 +42,17 @@ export default function ProjectionPage() {
   const [monteCarlo, setMonteCarlo] = useState<MonteCarloResult | null>(null);
   const [isRunningMc, setIsRunningMc] = useState(false);
   const [variant, setVariant] = useState("average");
+  const [comparison, setComparison] = useState<AssumptionComparison | null>(null);
+
+  async function loadComparison() {
+    try {
+      setComparison(
+        await apiRequest<AssumptionComparison>(`/scenarios/${params.id}/assumption-comparison`)
+      );
+    } catch {
+      // ignore — needs a runnable scenario
+    }
+  }
 
   useEffect(() => {
     apiRequest<ProjectionRun>(`/scenarios/${params.id}/projection`)
@@ -392,6 +404,76 @@ export default function ProjectionPage() {
                       {formatMoney(monteCarlo.p90_estate)}
                     </p>
                   </div>
+                </div>
+              ) : null}
+            </section>
+
+            {/* Optimistic / Average / Pessimistic comparison */}
+            <section className="rounded-md border border-stone-300 bg-white p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-stone-950">
+                  Optimistic vs Average vs Pessimistic
+                </h2>
+                <button
+                  className="h-9 rounded-md border border-stone-300 px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                  onClick={() => {
+                    void loadComparison();
+                  }}
+                  type="button"
+                >
+                  Compare assumptions
+                </button>
+              </div>
+              {comparison ? (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-stone-50 text-xs text-stone-500">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Metric</th>
+                        <th className="px-4 py-2 text-right">Pessimistic</th>
+                        <th className="px-4 py-2 text-right">Average</th>
+                        <th className="px-4 py-2 text-right">Optimistic</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      <tr>
+                        <td className="px-4 py-2 font-medium">Estate at longevity</td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.pessimistic.estate_net_worth)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.average.estate_net_worth)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.optimistic.estate_net_worth)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2 font-medium">Savings last until age</td>
+                        <td className="px-4 py-2 text-right">
+                          {comparison.pessimistic.out_of_savings_age ?? "never depletes"}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {comparison.average.out_of_savings_age ?? "never depletes"}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {comparison.optimistic.out_of_savings_age ?? "never depletes"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2 font-medium">Lifetime taxes</td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.pessimistic.lifetime_total_tax)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.average.lifetime_total_tax)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.optimistic.lifetime_total_tax)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               ) : null}
             </section>

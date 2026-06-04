@@ -77,6 +77,7 @@ from app.schemas import (
     AccountRead,
     AlertRead,
     AnnuityEstimateRead,
+    AssumptionComparisonRead,
     AssumptionSetRead,
     AssumptionSetUpdate,
     ClaimingOptionRead,
@@ -1109,6 +1110,31 @@ def run_roth_explorer(
         baseline_estate=result.baseline_estate,
         projected_estate=result.projected_estate,
         note=result.note,
+    )
+
+
+@app.get(
+    "/scenarios/{scenario_id}/assumption-comparison",
+    response_model=AssumptionComparisonRead,
+    tags=["projection"],
+)
+def assumption_comparison(scenario_id: str, session: SessionDep) -> AssumptionComparisonRead:
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    base = build_projection_input(scenario, assumptions, session)
+
+    def summary_for(variant: str) -> ProjectionSummaryRead:
+        run = run_projection(
+            apply_rate_variant(base, variant),
+            assumptions.irs_data_version,
+            assumptions.engine_version,
+        )
+        return ProjectionSummaryRead(**run.summary.__dict__)
+
+    return AssumptionComparisonRead(
+        average=summary_for("average"),
+        optimistic=summary_for("optimistic"),
+        pessimistic=summary_for("pessimistic"),
     )
 
 
