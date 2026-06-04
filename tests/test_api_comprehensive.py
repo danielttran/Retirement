@@ -2497,3 +2497,36 @@ def test_social_security_explorer_endpoint(client: TestClient) -> None:
     # PIA backed out from a 62 benefit of 21000 (0.70 multiplier) ≈ 30000.
     assert abs(float(body["pia_annual"]) - 30000) < 1
     assert body["max_lifetime_claiming_age"] == 70
+
+
+def test_insights_endpoint(client: TestClient) -> None:
+    hh = client.post(
+        "/households",
+        json={
+            "name": "Insights HH",
+            "filing_status": "single",
+            "state": "MA",
+            "primary_person": {"name": "Lee", "dob": "1958-01-01", "life_expectancy_age": 90},
+            "scenario_name": "Base",
+        },
+    ).json()
+    sid = hh["id"]
+    pid = hh["household"]["people"][0]["id"]
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": pid, "name": "Brokerage", "account_type": "taxable_brokerage",
+            "current_balance": "2000000", "expected_return": "0.05",
+            "return_stddev": "0.10", "cost_basis_pct": "0.8",
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/expense-streams",
+        json={"name": "Living", "kind": "must_spend", "annual_amount": "40000", "start_year": 2024},
+    )
+    resp = client.get(f"/scenarios/{sid}/insights")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert 0 <= body["score"] <= 100
+    assert body["rating"] in {"Excellent", "Good", "Fair", "At Risk"}
+    assert len(body["components"]) >= 3

@@ -248,6 +248,26 @@ export type RothExplorerResult = {
   note: string | null;
 };
 
+export type ScoreComponent = {
+  label: string;
+  score: number;
+  weight: number;
+  detail: string;
+};
+
+export type InsightAlert = {
+  severity: "success" | "info" | "warning" | "critical";
+  title: string;
+  message: string;
+};
+
+export type InsightsResult = {
+  score: number;
+  rating: string;
+  components: ScoreComponent[];
+  alerts: InsightAlert[];
+};
+
 export type ClaimingOption = {
   claiming_age: number;
   monthly_benefit: string;

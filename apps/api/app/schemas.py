@@ -416,6 +416,26 @@ class RothExplorerRead(BaseModel):
     note: str | None = None
 
 
+class ScoreComponentRead(BaseModel):
+    label: str
+    score: int
+    weight: int
+    detail: str
+
+
+class AlertRead(BaseModel):
+    severity: str
+    title: str
+    message: str
+
+
+class InsightsRead(BaseModel):
+    score: int
+    rating: str
+    components: list[ScoreComponentRead]
+    alerts: list[AlertRead]
+
+
 class MonteCarloRead(BaseModel):
     trials: int
     success_count: int

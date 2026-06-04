@@ -116,8 +116,8 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 ## 13. Insights / Coach
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
-| Financial Wellness Score | ✓ | ❌ | ❌ |
-| Coach alerts / suggestions | ✓ | 🟡 (validation warnings) | 🟡 |
+| Financial Wellness Score | ✓ | ✓ | ✅ |
+| Coach alerts / suggestions | ✓ | ✓ (rule-based insights) | ✅ |
 | AI chat assistant | ✓ | ⛔ | ⛔ (non-goal) |
 
 ## 14. Scenarios / What-if

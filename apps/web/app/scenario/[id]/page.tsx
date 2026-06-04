@@ -34,7 +34,12 @@ const NAV_ITEMS = [
     description: "Run and view year-by-year results",
     highlight: true
   },
-  { href: "charts", label: "Charts", description: "Net worth, cash flow, taxes, MAGI" }
+  { href: "charts", label: "Charts", description: "Net worth, cash flow, taxes, MAGI" },
+  {
+    href: "insights",
+    label: "Insights & Coach",
+    description: "Wellness score + actionable suggestions"
+  }
 ];
 
 export default function ScenarioPage() {

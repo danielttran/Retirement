@@ -44,6 +44,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import DATABASE_PATH, get_session, init_db
+from app.insights import compute_insights
 from app.models import (
     Account,
     AssumptionSet,
@@ -67,6 +68,7 @@ from app.roth_explorer import ConversionSuggestion, suggest_roth_conversions
 from app.schemas import (
     AccountCreate,
     AccountRead,
+    AlertRead,
     AssumptionSetRead,
     AssumptionSetUpdate,
     ClaimingOptionRead,
@@ -79,6 +81,7 @@ from app.schemas import (
     HouseholdRead,
     IncomeStreamCreate,
     IncomeStreamRead,
+    InsightsRead,
     MonteCarloRead,
     ProjectionAccountBalanceRead,
     ProjectionRead,
@@ -91,6 +94,7 @@ from app.schemas import (
     RothExplorerRead,
     ScenarioDetail,
     ScenarioRead,
+    ScoreComponentRead,
     SeppMethod,
     SeppPlanCreate,
     SeppPlanRead,
@@ -974,6 +978,44 @@ def run_roth_explorer(
         baseline_estate=result.baseline_estate,
         projected_estate=result.projected_estate,
         note=result.note,
+    )
+
+
+@app.get(
+    "/scenarios/{scenario_id}/insights",
+    response_model=InsightsRead,
+    tags=["projection"],
+)
+def scenario_insights(scenario_id: str, session: SessionDep) -> InsightsRead:
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    projection_input = build_projection_input(scenario, assumptions, session)
+    run = run_projection(
+        projection_input, assumptions.irs_data_version, assumptions.engine_version
+    )
+    monte_carlo = run_monte_carlo(
+        projection_input,
+        assumptions.irs_data_version,
+        assumptions.engine_version,
+        trials=300,
+        seed=12345,
+    )
+    primary = next((p for p in scenario.household.people if p.is_primary), None)
+    life_expectancy = primary.life_expectancy_age if primary else run.summary.final_age
+    result = compute_insights(projection_input, run, monte_carlo, life_expectancy)
+    return InsightsRead(
+        score=result.score,
+        rating=result.rating,
+        components=[
+            ScoreComponentRead(
+                label=c.label, score=c.score, weight=c.weight, detail=c.detail
+            )
+            for c in result.components
+        ],
+        alerts=[
+            AlertRead(severity=a.severity, title=a.title, message=a.message)
+            for a in result.alerts
+        ],
     )
 
 
