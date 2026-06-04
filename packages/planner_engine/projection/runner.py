@@ -29,6 +29,7 @@ class AssumptionSet:
     ss_cola_rate: Decimal = Decimal("0.025")
     pension_cola_rate: Decimal = Decimal("0")
     bracket_indexing_rate: Decimal = Decimal("0.025")
+    itemized_deductions: Decimal = Decimal("0")
     cash_reserve_target_months: int = 24
     tax_iteration_max: int = 5
     tax_iteration_tolerance: Decimal = Decimal("1.00")
@@ -753,6 +754,11 @@ def _compute_projection_taxes(
 ) -> TaxResult:
     wages_federal = max(ZERO, income.wages - contribution.federal_wage_reduction)
     wages_state = max(ZERO, income.wages - contribution.state_wage_reduction)
+    itemized = _inflate(
+        scenario.assumptions.itemized_deductions,
+        scenario.assumptions.bracket_indexing_rate,
+        year - scenario.start_year,
+    )
     return compute_taxes(
         TaxInput(
             year=year,
@@ -772,6 +778,7 @@ def _compute_projection_taxes(
             ss_gross=income.ss_gross,
             penalty_eligible_distributions=flex.penalty_eligible,
             hsa_penalty_eligible_distributions=flex.hsa_penalty_eligible,
+            itemized_deductions=itemized,
             irs_data_version=irs_data_version,
         )
     )

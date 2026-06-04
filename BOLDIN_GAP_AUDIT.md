@@ -79,7 +79,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Federal + state, year-by-year | ✓ | ✓ (MA) | ✅ |
 | LTCG stacking | ✓ | ✓ | ✅ |
 | SS taxation | ✓ | ✓ | ✅ |
-| Standard vs itemized optimization | ✓ | ❌ (std only) | ❌ |
+| Standard vs itemized optimization | ✓ | ✓ (max of the two) | ✅ |
 | Lifetime tax total | ✓ | ✓ | ✅ |
 | IRMAA (Part B/D) | ✓ | ✓ | ✅ |
 | Tax-bracket-fill visualization | ✓ | ❌ | ❌ |

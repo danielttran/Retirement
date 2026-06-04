@@ -84,6 +84,7 @@ export type AssumptionSet = {
   ss_cola_rate: string;
   pension_cola_rate: string;
   bracket_indexing_rate: string;
+  itemized_deductions: string;
   cash_reserve_target_months: number;
   irs_data_version: string;
   engine_version: string;

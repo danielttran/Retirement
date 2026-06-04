@@ -1375,6 +1375,7 @@ def build_projection_input(
             ss_cola_rate=assumptions.ss_cola_rate,
             pension_cola_rate=assumptions.pension_cola_rate,
             bracket_indexing_rate=assumptions.bracket_indexing_rate,
+            itemized_deductions=assumptions.itemized_deductions,
             cash_reserve_target_months=assumptions.cash_reserve_target_months,
             tax_iteration_max=assumptions.tax_iteration_max,
             tax_iteration_tolerance=assumptions.tax_iteration_tolerance,

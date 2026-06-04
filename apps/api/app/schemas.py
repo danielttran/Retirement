@@ -174,6 +174,7 @@ class AssumptionSetRead(ApiModel):
     ss_cola_rate: Decimal
     pension_cola_rate: Decimal
     bracket_indexing_rate: Decimal
+    itemized_deductions: Decimal
     cash_reserve_target_months: int
     irs_data_version: str
     engine_version: str
@@ -188,6 +189,7 @@ class AssumptionSetUpdate(BaseModel):
     ss_cola_rate: Decimal = Decimal("0.025")
     pension_cola_rate: Decimal = Decimal("0")
     bracket_indexing_rate: Decimal = Decimal("0.025")
+    itemized_deductions: Decimal = Decimal("0")
     cash_reserve_target_months: int = 24
     irs_data_version: str = "2024-33"
     engine_version: str = "0.1.0"

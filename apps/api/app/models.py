@@ -187,6 +187,7 @@ class AssumptionSet(Base):
     ss_cola_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.025"))
     pension_cola_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
     bracket_indexing_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.025"))
+    itemized_deductions: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
     cash_reserve_target_months: Mapped[int] = mapped_column(default=24, nullable=False)
     irs_data_version: Mapped[str] = mapped_column(String, default="2024-33", nullable=False)
     engine_version: Mapped[str] = mapped_column(String, nullable=False)
