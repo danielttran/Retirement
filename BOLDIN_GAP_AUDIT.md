@@ -170,4 +170,35 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
   withdrawal. Fixed latent bugs: CI was red (pre-existing mypy + ruff failures) — now green.
   Fixed crash: uniform lifetime RMD table only reached age 80; extended to official age 120 so
   realistic life expectancies (default 95) no longer crash. 286 tests passing.
-</content>
+- Waves 2-5 delivered (each engine + API + UI + tests, CI green throughout): Monte Carlo +
+  chance-of-success + optimistic/avg/pessimistic variants; IRMAA; itemized deductions; Medicare +
+  pre-65 ACA estimators; Social Security claiming-age explorer; Roth Conversion Explorer
+  (bracket / IRMAA / goal-based highest-estate & lowest-lifetime-tax); Financial Wellness Score +
+  Coach insights; debt amortization; home sale; contributions + employer match; extra account
+  types (529 / deferred comp / life insurance); rate-of-return-ordered drawdown; account exclusion;
+  housing appreciation; annuity calculator; survivor / death-of-spouse modeling + couples (people
+  CRUD); Money Flows; lifetime-tax / out-of-savings / estate metrics; Sankey + tax-bracket-fill +
+  IRMAA charts; print/PDF; lifetime annuity calculator.
+
+### Final status
+All relevant Boldin features are ✅ except the **AI chat assistant**, which is ⛔ out of scope:
+it requires an external LLM service (incompatible with a local-first, single-user, deterministic
+engine) and is an explicit SPEC non-goal — the local **Insights & Coach** feature delivers the
+actionable-advice value instead.
+
+### Audit Round 1 — clean
+- Gaps: none remaining (AI chat ⛔ by design, rationale above).
+- Bugs: none found. Verified via: full suite **337 passed**; `ruff` clean; `mypy --strict` clean;
+  engine float-scan clean; web `tsc` clean. End-to-end API smoke test of a couples scenario
+  exercising every new endpoint (projection variants, monte-carlo, insights,
+  assumption-comparison, SS explorer, all Roth-explorer strategies, calculators, money-flows,
+  people) all returned 200. Determinism (byte-identical re-run) and per-account conservation
+  (`ending = beginning + contributions − distributions + return`) verified on a complex scenario
+  (survivor + money flow + RMDs + Roth). Manual review confirmed `_clone_account` copies every
+  field and all new projection columns persist.
+
+### Audit Round 2 — clean
+- Gaps: none remaining (unchanged from Round 1).
+- Bugs: none found. Re-ran full suite + property-based tests (Hypothesis, default profile) +
+  all static gates green; fresh end-to-end smoke test green. No regressions across two consecutive
+  rounds.
