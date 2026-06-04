@@ -323,6 +323,7 @@ class ProjectionYearRead(ApiModel):
     magi: Decimal
     provisional_income: Decimal
     ss_taxable_portion: Decimal
+    ordinary_taxable_income: Decimal = Decimal("0")
     medicare_irmaa: Decimal = Decimal("0")
     surplus: Decimal
     ending_net_worth: Decimal
@@ -373,6 +374,28 @@ class ProjectionRead(ApiModel):
     account_balances: list[ProjectionAccountBalanceRead]
     warnings: list[ProjectionWarningRead]
     summary: ProjectionSummaryRead | None = None
+
+
+class ConversionSuggestionRead(BaseModel):
+    year: int
+    amount: Decimal
+    ordinary_taxable_income: Decimal
+    magi: Decimal
+    headroom: Decimal
+    traditional_balance: Decimal
+
+
+class RothExplorerRead(BaseModel):
+    strategy: str
+    source_account_id: str | None
+    destination_account_id: str | None
+    suggestions: list[ConversionSuggestionRead]
+    total_converted: Decimal
+    baseline_lifetime_tax: Decimal
+    projected_lifetime_tax: Decimal
+    baseline_estate: Decimal
+    projected_estate: Decimal
+    note: str | None = None
 
 
 class MonteCarloRead(BaseModel):

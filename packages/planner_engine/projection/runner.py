@@ -159,6 +159,7 @@ class ProjectionYear:
     magi: Decimal
     provisional_income: Decimal
     ss_taxable_portion: Decimal
+    ordinary_taxable_income: Decimal
     medicare_irmaa: Decimal
     surplus: Decimal
     ending_net_worth: Decimal
@@ -615,6 +616,7 @@ def run_projection(
                 magi=tax_result.magi,
                 provisional_income=tax_result.provisional_income,
                 ss_taxable_portion=tax_result.ss_taxable_portion,
+                ordinary_taxable_income=tax_result.ordinary_taxable,
                 medicare_irmaa=irmaa,
                 surplus=max(surplus, ZERO),
                 ending_net_worth=_net_worth(accounts),

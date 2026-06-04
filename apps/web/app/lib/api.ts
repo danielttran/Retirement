@@ -226,6 +226,28 @@ export type ProjectionRun = {
   summary: ProjectionSummary | null;
 };
 
+export type ConversionSuggestion = {
+  year: number;
+  amount: string;
+  ordinary_taxable_income: string;
+  magi: string;
+  headroom: string;
+  traditional_balance: string;
+};
+
+export type RothExplorerResult = {
+  strategy: string;
+  source_account_id: string | null;
+  destination_account_id: string | null;
+  suggestions: ConversionSuggestion[];
+  total_converted: string;
+  baseline_lifetime_tax: string;
+  projected_lifetime_tax: string;
+  baseline_estate: string;
+  projected_estate: string;
+  note: string | null;
+};
+
 export type MonteCarloResult = {
   trials: number;
   success_count: number;

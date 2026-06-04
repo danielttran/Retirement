@@ -8,6 +8,7 @@ import {
   formatMoney,
   type Account,
   type RothConversionPlan,
+  type RothExplorerResult,
   type ScenarioDetail
 } from "../../../lib/api";
 
@@ -25,6 +26,34 @@ export default function RothConversionsPage() {
   const [conversions, setConversions] = useState<RothConversionPlan[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [explorer, setExplorer] = useState<RothExplorerResult | null>(null);
+  const [isExploring, setIsExploring] = useState(false);
+  const [strategy, setStrategy] = useState("bracket");
+  const [targetRate, setTargetRate] = useState("0.24");
+
+  async function runExplorer(apply: boolean) {
+    setIsExploring(true);
+    setError(null);
+    try {
+      const query = new URLSearchParams({
+        strategy,
+        target_rate: targetRate,
+        apply: String(apply)
+      });
+      const result = await apiRequest<RothExplorerResult>(
+        `/scenarios/${params.id}/roth-explorer?${query.toString()}`,
+        { method: "POST" }
+      );
+      setExplorer(result);
+      if (apply) {
+        await load();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Explorer failed");
+    } finally {
+      setIsExploring(false);
+    }
+  }
 
   async function load() {
     const [s, c] = await Promise.all([
@@ -191,6 +220,129 @@ export default function RothConversionsPage() {
           </form>
         </aside>
 
+        <div className="flex flex-col gap-6">
+        <section className="rounded-md border border-stone-300 bg-white p-5">
+          <h2 className="text-xl font-semibold text-stone-950">Conversion Explorer</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Suggests a year-by-year conversion schedule that fills a target tax bracket (or stays
+            under an IRMAA MAGI ceiling) and compares lifetime taxes and estate value.
+          </p>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-sm font-medium text-stone-800">
+              Strategy
+              <select
+                className="h-10 rounded-md border border-stone-300 px-2"
+                onChange={(e) => setStrategy(e.target.value)}
+                value={strategy}
+              >
+                <option value="bracket">Fill tax bracket</option>
+                <option value="irmaa">Stay under IRMAA</option>
+              </select>
+            </label>
+            {strategy === "bracket" ? (
+              <label className="flex flex-col gap-1 text-sm font-medium text-stone-800">
+                Target bracket
+                <select
+                  className="h-10 rounded-md border border-stone-300 px-2"
+                  onChange={(e) => setTargetRate(e.target.value)}
+                  value={targetRate}
+                >
+                  <option value="0.10">10%</option>
+                  <option value="0.12">12%</option>
+                  <option value="0.22">22%</option>
+                  <option value="0.24">24%</option>
+                  <option value="0.32">32%</option>
+                </select>
+              </label>
+            ) : null}
+            <button
+              className="h-10 rounded-md bg-stone-800 px-4 text-sm font-semibold text-white hover:bg-stone-900 disabled:opacity-60"
+              disabled={isExploring}
+              onClick={() => {
+                void runExplorer(false);
+              }}
+              type="button"
+            >
+              {isExploring ? "Analyzing…" : "Explore"}
+            </button>
+          </div>
+
+          {explorer ? (
+            explorer.note ? (
+              <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                {explorer.note}
+              </p>
+            ) : (
+              <div className="mt-4 flex flex-col gap-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-md border border-stone-200 p-3">
+                    <p className="text-xs uppercase tracking-wide text-stone-500">Total converted</p>
+                    <p className="text-lg font-semibold">
+                      {formatMoney(explorer.total_converted)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-stone-200 p-3">
+                    <p className="text-xs uppercase tracking-wide text-stone-500">Lifetime tax</p>
+                    <p className="text-lg font-semibold">
+                      {formatMoney(explorer.baseline_lifetime_tax)} →{" "}
+                      {formatMoney(explorer.projected_lifetime_tax)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-stone-200 p-3">
+                    <p className="text-xs uppercase tracking-wide text-stone-500">Estate value</p>
+                    <p className="text-lg font-semibold">
+                      {formatMoney(explorer.baseline_estate)} →{" "}
+                      {formatMoney(explorer.projected_estate)}
+                    </p>
+                  </div>
+                </div>
+                {explorer.suggestions.length > 0 ? (
+                  <>
+                    <div className="max-h-56 overflow-y-auto rounded-md border border-stone-200">
+                      <table className="w-full text-sm">
+                        <thead className="bg-stone-50 text-xs text-stone-500">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Year</th>
+                            <th className="px-3 py-2 text-right">Convert</th>
+                            <th className="px-3 py-2 text-right">Headroom</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {explorer.suggestions.map((s) => (
+                            <tr className="border-t border-stone-100" key={s.year}>
+                              <td className="px-3 py-1.5">{s.year}</td>
+                              <td className="px-3 py-1.5 text-right font-medium">
+                                {formatMoney(s.amount)}
+                              </td>
+                              <td className="px-3 py-1.5 text-right text-stone-500">
+                                {formatMoney(s.headroom)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button
+                      className="h-10 self-start rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                      disabled={isExploring}
+                      onClick={() => {
+                        void runExplorer(true);
+                      }}
+                      type="button"
+                    >
+                      Apply these {explorer.suggestions.length} conversions
+                    </button>
+                  </>
+                ) : (
+                  <p className="text-sm text-stone-500">
+                    No conversions suggested — no bracket headroom in the window.
+                  </p>
+                )}
+              </div>
+            )
+          ) : null}
+        </section>
+
         <section className="rounded-md border border-stone-300 bg-white">
           <div className="border-b border-stone-200 px-5 py-4">
             <h2 className="text-xl font-semibold text-stone-950">Roth conversion schedule</h2>
@@ -235,6 +387,7 @@ export default function RothConversionsPage() {
             </div>
           )}
         </section>
+        </div>
       </div>
     </main>
   );

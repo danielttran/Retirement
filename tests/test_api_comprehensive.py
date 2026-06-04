@@ -2419,3 +2419,50 @@ def test_rate_variant_optimistic_beats_pessimistic() -> None:
     avg = run_projection(apply_rate_variant(base, "average"), "2024-33", "test")
     assert opt.summary.estate_net_worth > avg.summary.estate_net_worth
     assert avg.summary.estate_net_worth > pess.summary.estate_net_worth
+
+
+def test_roth_explorer_endpoint(client: TestClient) -> None:
+    hh = client.post(
+        "/households",
+        json={
+            "name": "Explorer HH",
+            "filing_status": "single",
+            "state": "MA",
+            "primary_person": {"name": "Pat", "dob": "1962-01-01", "life_expectancy_age": 80},
+            "scenario_name": "Base",
+        },
+    ).json()
+    sid = hh["id"]
+    pid = hh["household"]["people"][0]["id"]
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": pid, "name": "IRA", "account_type": "traditional_ira",
+            "current_balance": "700000", "expected_return": "0.05",
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": pid, "name": "Roth", "account_type": "roth_ira",
+            "current_balance": "0", "expected_return": "0.05",
+            "roth_first_contribution_year": 2010,
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/expense-streams",
+        json={"name": "Living", "kind": "must_spend", "annual_amount": "40000", "start_year": 2024},
+    )
+    resp = client.post(
+        f"/scenarios/{sid}/roth-explorer?strategy=bracket&target_rate=0.22"
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["strategy"] == "bracket"
+    assert len(body["suggestions"]) > 0
+    # Apply persists the suggested conversions.
+    applied = client.post(
+        f"/scenarios/{sid}/roth-explorer?strategy=bracket&target_rate=0.22&apply=true"
+    ).json()
+    plans = client.get(f"/scenarios/{sid}/roth-conversions").json()
+    assert len(plans) == len(applied["suggestions"])

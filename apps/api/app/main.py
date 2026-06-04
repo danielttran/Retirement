@@ -58,6 +58,7 @@ from app.models import (
     WithdrawalStrategy,
 )
 from app.montecarlo import run_monte_carlo
+from app.roth_explorer import ConversionSuggestion, suggest_roth_conversions
 from app.schemas import (
     AccountCreate,
     AccountRead,
@@ -65,6 +66,7 @@ from app.schemas import (
     AssumptionSetUpdate,
     ContributionCreate,
     ContributionRead,
+    ConversionSuggestionRead,
     ExpenseStreamCreate,
     ExpenseStreamRead,
     HouseholdCreate,
@@ -80,6 +82,7 @@ from app.schemas import (
     ProjectionYearRead,
     RothConversionPlanCreate,
     RothConversionPlanRead,
+    RothExplorerRead,
     ScenarioDetail,
     ScenarioRead,
     SeppMethod,
@@ -842,6 +845,7 @@ def run_scenario_projection(
             magi=row.magi,
             provisional_income=row.provisional_income,
             ss_taxable_portion=row.ss_taxable_portion,
+            ordinary_taxable_income=row.ordinary_taxable_income,
             medicare_irmaa=row.medicare_irmaa,
             surplus=row.surplus,
             ending_net_worth=row.ending_net_worth,
@@ -899,6 +903,82 @@ def run_scenario_monte_carlo(
         seed=12345,
     )
     return MonteCarloRead(**result.__dict__)
+
+
+@app.post(
+    "/scenarios/{scenario_id}/roth-explorer",
+    response_model=RothExplorerRead,
+    tags=["roth"],
+)
+def run_roth_explorer(
+    scenario_id: str,
+    session: SessionDep,
+    strategy: str = "bracket",
+    target_rate: Decimal = Decimal("0.24"),
+    irmaa_magi_ceiling: Decimal = Decimal("206000"),
+    start_year: int | None = None,
+    end_year: int | None = None,
+    apply: bool = False,
+) -> RothExplorerRead:
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    projection_input = build_projection_input(scenario, assumptions, session)
+    window_start = start_year if start_year is not None else projection_input.start_year
+    # Default to the year before the primary reaches RMD age 73; conversions before RMDs help most.
+    primary = next((p for p in scenario.household.people if p.is_primary), None)
+    default_end = projection_input.end_year
+    if primary is not None:
+        default_end = min(default_end, parse_year(primary.dob) + 72)
+    window_end = end_year if end_year is not None else max(window_start, default_end)
+
+    result = suggest_roth_conversions(
+        projection_input,
+        assumptions.irs_data_version,
+        assumptions.engine_version,
+        strategy=strategy,
+        target_rate=target_rate,
+        irmaa_magi_ceiling=irmaa_magi_ceiling,
+        start_year=window_start,
+        end_year=window_end,
+    )
+
+    if apply and result.source_account_id and result.destination_account_id:
+        for suggestion in result.suggestions:
+            session.add(
+                RothConversionPlan(
+                    id=new_id(),
+                    scenario_id=scenario.id,
+                    source_account_id=result.source_account_id,
+                    destination_account_id=result.destination_account_id,
+                    year=suggestion.year,
+                    amount=suggestion.amount,
+                )
+            )
+        session.commit()
+
+    return RothExplorerRead(
+        strategy=result.strategy,
+        source_account_id=result.source_account_id,
+        destination_account_id=result.destination_account_id,
+        suggestions=[_suggestion_read(s) for s in result.suggestions],
+        total_converted=result.total_converted,
+        baseline_lifetime_tax=result.baseline_lifetime_tax,
+        projected_lifetime_tax=result.projected_lifetime_tax,
+        baseline_estate=result.baseline_estate,
+        projected_estate=result.projected_estate,
+        note=result.note,
+    )
+
+
+def _suggestion_read(suggestion: ConversionSuggestion) -> ConversionSuggestionRead:
+    return ConversionSuggestionRead(
+        year=suggestion.year,
+        amount=suggestion.amount,
+        ordinary_taxable_income=suggestion.ordinary_taxable_income,
+        magi=suggestion.magi,
+        headroom=suggestion.headroom,
+        traditional_balance=suggestion.traditional_balance,
+    )
 
 
 @app.get(
