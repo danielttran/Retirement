@@ -248,6 +248,24 @@ export type RothExplorerResult = {
   note: string | null;
 };
 
+export type ClaimingOption = {
+  claiming_age: number;
+  monthly_benefit: string;
+  annual_benefit: string;
+  lifetime_total: string;
+  break_even_age_vs_earliest: number | null;
+};
+
+export type SocialSecurityExplorerResult = {
+  person_id: string;
+  person_name: string;
+  pia_annual: string;
+  full_retirement_age_months: number;
+  current_claiming_age: number | null;
+  options: ClaimingOption[];
+  max_lifetime_claiming_age: number;
+};
+
 export type MonteCarloResult = {
   trials: number;
   success_count: number;

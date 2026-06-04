@@ -376,6 +376,24 @@ class ProjectionRead(ApiModel):
     summary: ProjectionSummaryRead | None = None
 
 
+class ClaimingOptionRead(BaseModel):
+    claiming_age: int
+    monthly_benefit: Decimal
+    annual_benefit: Decimal
+    lifetime_total: Decimal
+    break_even_age_vs_earliest: int | None
+
+
+class SocialSecurityExplorerRead(BaseModel):
+    person_id: str
+    person_name: str
+    pia_annual: Decimal
+    full_retirement_age_months: int
+    current_claiming_age: int | None
+    options: list[ClaimingOptionRead]
+    max_lifetime_claiming_age: int
+
+
 class ConversionSuggestionRead(BaseModel):
     year: int
     amount: Decimal

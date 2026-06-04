@@ -87,8 +87,8 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 ## 9. Social Security Explorer
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
-| Claiming-age comparison / break-even | ✓ | ❌ | ❌ |
-| Spousal / survivor modeling | ✓ | ❌ | ❌ |
+| Claiming-age comparison / break-even | ✓ | ✓ | ✅ |
+| Spousal / survivor modeling | ✓ | 🟡 (per-person; survivor in Wave 5) | 🟡 |
 
 ## 10. Medicare / Healthcare
 | Feature | Boldin | This app | Status |

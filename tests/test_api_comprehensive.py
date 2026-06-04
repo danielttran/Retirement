@@ -2466,3 +2466,34 @@ def test_roth_explorer_endpoint(client: TestClient) -> None:
     ).json()
     plans = client.get(f"/scenarios/{sid}/roth-conversions").json()
     assert len(plans) == len(applied["suggestions"])
+
+
+def test_social_security_explorer_endpoint(client: TestClient) -> None:
+    hh = client.post(
+        "/households",
+        json={
+            "name": "SS HH",
+            "filing_status": "single",
+            "state": "MA",
+            "primary_person": {"name": "Sam", "dob": "1965-06-01", "life_expectancy_age": 90},
+            "scenario_name": "Base",
+        },
+    ).json()
+    sid = hh["id"]
+    pid = hh["household"]["people"][0]["id"]
+    client.post(
+        f"/scenarios/{sid}/income-streams",
+        json={
+            "name": "SS", "kind": "social_security", "annual_amount": "21000",
+            "start_year": 2027, "inflation_kind": "ss_cola", "person_id": pid,
+            "claiming_age": 62,
+        },
+    )
+    resp = client.get(f"/scenarios/{sid}/social-security-explorer?person_id={pid}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["options"]) == 9
+    assert body["current_claiming_age"] == 62
+    # PIA backed out from a 62 benefit of 21000 (0.70 multiplier) ≈ 30000.
+    assert abs(float(body["pia_annual"]) - 30000) < 1
+    assert body["max_lifetime_claiming_age"] == 70

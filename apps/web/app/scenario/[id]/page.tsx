@@ -14,6 +14,11 @@ const NAV_ITEMS = [
     description: "Ongoing savings + employer match (accumulation)"
   },
   { href: "income", label: "Income", description: "Salary, pension, Social Security, annuity" },
+  {
+    href: "social-security",
+    label: "Social Security",
+    description: "Claiming-age explorer + break-even"
+  },
   { href: "expenses", label: "Expenses", description: "Must-spend, discretionary, healthcare" },
   { href: "sepp", label: "SEPP / 72(t)", description: "Substantially equal periodic payment plans" },
   {

@@ -34,6 +34,11 @@ from planner_engine.projection import (
 from planner_engine.roth import RothConversionPlan as EngineRothConversionPlan
 from planner_engine.sepp.calculator import SeppCalculationInput
 from planner_engine.sepp.calculator import calculate_initial_payment as _compute_sepp_payment
+from planner_engine.socialsecurity import (
+    explore_claiming_ages,
+    full_retirement_age_months,
+    pia_from_benefit,
+)
 from planner_engine.withdrawal import DEFAULT_WITHDRAWAL_ORDER
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -64,6 +69,7 @@ from app.schemas import (
     AccountRead,
     AssumptionSetRead,
     AssumptionSetUpdate,
+    ClaimingOptionRead,
     ContributionCreate,
     ContributionRead,
     ConversionSuggestionRead,
@@ -88,6 +94,7 @@ from app.schemas import (
     SeppMethod,
     SeppPlanCreate,
     SeppPlanRead,
+    SocialSecurityExplorerRead,
     WithdrawalStrategyRead,
     WithdrawalStrategyUpdate,
 )
@@ -967,6 +974,69 @@ def run_roth_explorer(
         baseline_estate=result.baseline_estate,
         projected_estate=result.projected_estate,
         note=result.note,
+    )
+
+
+@app.get(
+    "/scenarios/{scenario_id}/social-security-explorer",
+    response_model=SocialSecurityExplorerRead,
+    tags=["social-security"],
+)
+def social_security_explorer(
+    scenario_id: str,
+    session: SessionDep,
+    person_id: str | None = None,
+) -> SocialSecurityExplorerRead:
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    people = scenario.household.people
+    person = None
+    if person_id is not None:
+        person = next((p for p in people if p.id == person_id), None)
+    if person is None:
+        person = next((p for p in people if p.is_primary), people[0] if people else None)
+    if person is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No person found")
+
+    ss_stream = session.scalar(
+        select(IncomeStream).where(
+            IncomeStream.household_id == scenario.household_id,
+            IncomeStream.person_id == person.id,
+            IncomeStream.kind == "social_security",
+        )
+    )
+    birth_year = parse_year(person.dob)
+    fra_months = full_retirement_age_months(birth_year)
+    if ss_stream is not None:
+        claiming_age = ss_stream.claiming_age or (fra_months // 12)
+        pia = pia_from_benefit(ss_stream.annual_amount, claiming_age, fra_months)
+    else:
+        claiming_age = None
+        pia = Decimal("0")
+
+    result = explore_claiming_ages(
+        pia_annual=pia,
+        birth_year=birth_year,
+        life_expectancy_age=person.life_expectancy_age,
+        cola_rate=assumptions.ss_cola_rate,
+    )
+    return SocialSecurityExplorerRead(
+        person_id=person.id,
+        person_name=person.name,
+        pia_annual=result.pia_annual,
+        full_retirement_age_months=result.full_retirement_age_months,
+        current_claiming_age=claiming_age,
+        options=[
+            ClaimingOptionRead(
+                claiming_age=o.claiming_age,
+                monthly_benefit=o.monthly_benefit,
+                annual_benefit=o.annual_benefit,
+                lifetime_total=o.lifetime_total,
+                break_even_age_vs_earliest=o.break_even_age_vs_earliest,
+            )
+            for o in result.options
+        ],
+        max_lifetime_claiming_age=result.max_lifetime_claiming_age,
     )
 
 
