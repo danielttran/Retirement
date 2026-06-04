@@ -111,14 +111,14 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Cash flow | ✓ | ✓ | ✅ |
 | Out-of-money / out-of-savings age | ✓ | ✓ | ✅ |
 | Estate value at longevity | ✓ | ✓ | ✅ |
-| Sankey cash-flow chart | ✓ | ❌ | ⛔? (nice-to-have) |
+| Sankey cash-flow chart | ✓ | ✓ | ✅ |
 
 ## 13. Insights / Coach
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
 | Financial Wellness Score | ✓ | ✓ | ✅ |
 | Coach alerts / suggestions | ✓ | ✓ (rule-based insights) | ✅ |
-| AI chat assistant | ✓ | ⛔ | ⛔ (non-goal) |
+| AI chat assistant | ✓ | ⛔ | ⛔ (external LLM; SPEC non-goal — Insights/Coach covers the actionable-advice value locally) |
 
 ## 14. Scenarios / What-if
 | Feature | Boldin | This app | Status |

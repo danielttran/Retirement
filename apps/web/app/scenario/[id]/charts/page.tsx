@@ -15,6 +15,7 @@ import {
   LineChart,
   ReferenceLine,
   ResponsiveContainer,
+  Sankey,
   Tooltip,
   XAxis,
   YAxis
@@ -192,6 +193,42 @@ export default function ChartsPage() {
     year: y.year,
     taxable: Number(y.ordinary_taxable_income)
   }));
+
+  // --- Chart 9: Sankey lifetime cash flow ---
+  const projectionYears = projection.years;
+  const sumBy = (fn: (y: (typeof projectionYears)[number]) => number) =>
+    projectionYears.reduce((acc, y) => acc + fn(y), 0);
+  const sankeyIncome = sumBy((y) => Number(y.gross_income));
+  const sankeyWithdrawals = sumBy(
+    (y) => Number(y.required_distributions) + Number(y.flexible_withdrawals)
+  );
+  const sankeyTaxes = sumBy(
+    (y) =>
+      Number(y.federal_tax) +
+      Number(y.state_tax) +
+      Number(y.early_withdrawal_penalty) +
+      Number(y.medicare_irmaa)
+  );
+  const sankeyExpenses = sumBy((y) => Number(y.expenses));
+  const sankeyTotalCash = sankeyIncome + sankeyWithdrawals;
+  const sankeySurplus = Math.max(0, sankeyTotalCash - sankeyTaxes - sankeyExpenses);
+  const sankeyData = {
+    nodes: [
+      { name: "Income & SS" },
+      { name: "Withdrawals" },
+      { name: "Total cash" },
+      { name: "Taxes" },
+      { name: "Living expenses" },
+      { name: "Surplus / savings" }
+    ],
+    links: [
+      { source: 0, target: 2, value: Math.max(1, sankeyIncome) },
+      { source: 1, target: 2, value: Math.max(1, sankeyWithdrawals) },
+      { source: 2, target: 3, value: Math.max(1, sankeyTaxes) },
+      { source: 2, target: 4, value: Math.max(1, sankeyExpenses) },
+      { source: 2, target: 5, value: Math.max(1, sankeySurplus) }
+    ]
+  };
 
   return (
     <main className="min-h-screen px-6 py-8">
@@ -433,6 +470,23 @@ export default function ChartsPage() {
                 />
               ))}
             </LineChart>
+          </ResponsiveContainer>
+        </section>
+
+        {/* Chart 9: Sankey lifetime cash flow */}
+        <section className="rounded-md border border-stone-300 bg-white p-5">
+          <h2 className="mb-4 text-base font-semibold text-stone-950">
+            9. Lifetime Cash Flow (Sankey)
+          </h2>
+          <ResponsiveContainer height={320} width="100%">
+            <Sankey
+              data={sankeyData}
+              link={{ stroke: "#a7f3d0" }}
+              node={{ fill: "#059669" }}
+              nodePadding={30}
+            >
+              <Tooltip formatter={(v: number) => formatMoney(v)} />
+            </Sankey>
           </ResponsiveContainer>
         </section>
       </div>
