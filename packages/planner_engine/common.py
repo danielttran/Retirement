@@ -43,4 +43,8 @@ class AccountYearState:
     # owed (positive) and ``expected_return`` is the loan APR.
     debt_annual_payment: Decimal = Decimal("0")
     exclude_from_withdrawals: bool = False
+    # Real-estate accounts only: liquidate in this year (net proceeds move to cash). The
+    # primary-residence capital-gains exclusion is assumed, so the sale is modeled tax-free.
+    sale_year: int | None = None
+    selling_cost_pct: Decimal = Decimal("0.06")
 

@@ -73,7 +73,15 @@ export default function AccountsPage() {
           : null,
       debt_annual_payment:
         selectedType === "debt" ? String(form.get("debtAnnualPayment") ?? "0") : "0",
-      exclude_from_withdrawals: form.get("excludeFromWithdrawals") === "on"
+      exclude_from_withdrawals: form.get("excludeFromWithdrawals") === "on",
+      sale_year:
+        selectedType === "real_estate" && form.get("saleYear")
+          ? Number(form.get("saleYear"))
+          : null,
+      selling_cost_pct:
+        selectedType === "real_estate"
+          ? String(Number(form.get("sellingCostPct") ?? 6) / 100)
+          : "0.06"
     };
 
     try {
@@ -219,6 +227,30 @@ export default function AccountsPage() {
                   type="number"
                 />
               </label>
+            ) : null}
+
+            {selectedType === "real_estate" ? (
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-2 text-sm font-medium text-stone-800">
+                  Sale year (optional)
+                  <input
+                    className="h-10 rounded-md border border-stone-300 px-3"
+                    name="saleYear"
+                    placeholder="e.g. 2040"
+                    type="number"
+                  />
+                </label>
+                <label className="flex flex-col gap-2 text-sm font-medium text-stone-800">
+                  Selling cost %
+                  <input
+                    className="h-10 rounded-md border border-stone-300 px-3"
+                    defaultValue="6"
+                    name="sellingCostPct"
+                    step="0.5"
+                    type="number"
+                  />
+                </label>
+              </div>
             ) : null}
 
             <label className="flex items-center gap-2 text-sm font-medium text-stone-800">

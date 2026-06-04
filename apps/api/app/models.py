@@ -74,6 +74,8 @@ class Account(Base):
     )
     debt_annual_payment: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
     exclude_from_withdrawals: Mapped[bool] = mapped_column(default=False, nullable=False)
+    sale_year: Mapped[int | None] = mapped_column(nullable=True)
+    selling_cost_pct: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.06"))
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(String, nullable=False)
 

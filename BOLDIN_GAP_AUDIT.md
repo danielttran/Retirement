@@ -47,7 +47,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | **Contributions + employer match** | ✓ | ✓ | ✅ |
 | Per-account rate of return | ✓ | ✓ | ✅ |
 | Account exclusion from auto-withdrawal/RMD/conv | ✓ | 🟡 (withdrawals) | 🟡 |
-| Home sale / downsize event | ✓ | ❌ | ❌ |
+| Home sale / downsize event | ✓ | ✓ | ✅ |
 | 529, deferred comp, life insurance (extra types) | ✓ | ✓ | ✅ |
 
 ## 5. Debt

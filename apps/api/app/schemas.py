@@ -82,6 +82,8 @@ class AccountCreate(BaseModel):
     hsa_qualified_medical_expense_pct: Decimal | None = None
     debt_annual_payment: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     exclude_from_withdrawals: bool = False
+    sale_year: int | None = None
+    selling_cost_pct: Decimal = Field(default=Decimal("0.06"), ge=Decimal("0"))
 
 
 class AccountRead(AccountCreate, ApiModel):

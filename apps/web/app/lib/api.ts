@@ -39,6 +39,8 @@ export type Account = {
   roth_first_contribution_year: number | null;
   debt_annual_payment: string;
   exclude_from_withdrawals: boolean;
+  sale_year: number | null;
+  selling_cost_pct: string;
   created_at: string;
 };
 

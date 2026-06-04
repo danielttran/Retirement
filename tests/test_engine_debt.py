@@ -96,3 +96,17 @@ def test_exclude_from_withdrawals_protects_account() -> None:
     brk_bal = next(b for b in run.account_balances if b.account_id == "brk")
     assert cash_bal.ending_balance == Decimal("100000.00")  # untouched
     assert brk_bal.ending_balance < Decimal("100000.00")  # funded the gap
+
+
+def test_home_sale_moves_net_proceeds_to_cash() -> None:
+    cash = AccountYearState("cash", "p1", "cash", Decimal("10000"), Decimal("0"))
+    home = AccountYearState(
+        "home", "p1", "real_estate", Decimal("500000"), Decimal("0"),
+        sale_year=2025, selling_cost_pct=Decimal("0.06"),
+    )
+    run = _run([cash, home], end_year=2026)
+    balances = {(b.account_id, b.year): b for b in run.account_balances}
+    assert balances[("home", 2024)].ending_balance == Decimal("500000.00")
+    assert balances[("home", 2025)].ending_balance == Decimal("0.00")
+    assert balances[("home", 2025)].distributions == Decimal("500000.00")
+    assert balances[("cash", 2025)].ending_balance == Decimal("480000.00")

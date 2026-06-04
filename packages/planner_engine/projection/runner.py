@@ -423,6 +423,35 @@ def _service_debt(
     return quantize_cents(total)
 
 
+def _process_home_sales(
+    accounts: dict[str, AccountYearState],
+    contributions: dict[str, Decimal],
+    distributions: dict[str, Decimal],
+    year: int,
+) -> None:
+    """Liquidate real-estate accounts scheduled to sell this year; net proceeds move to cash.
+
+    Selling costs reduce net worth; the primary-residence gain exclusion is assumed (sale is
+    modeled tax-free). Proceeds land in the first cash account, else the first taxable brokerage.
+    """
+    destination = next(
+        (a for a in accounts.values() if a.account_type == "cash"),
+        next((a for a in accounts.values() if a.account_type == "taxable_brokerage"), None),
+    )
+    for account in accounts.values():
+        if account.account_type != "real_estate" or account.sale_year != year:
+            continue
+        if account.balance <= ZERO:
+            continue
+        gross = account.balance
+        net = quantize_cents(gross * (ONE - account.selling_cost_pct))
+        distributions[account.id] += gross
+        account.balance = ZERO
+        if destination is not None and destination.id != account.id:
+            destination.balance += net
+            contributions[destination.id] += net
+
+
 def _net_worth(accounts: dict[str, AccountYearState]) -> Decimal:
     """Total net worth: assets minus debt liabilities (debt balances are amounts owed)."""
     total = ZERO
@@ -491,6 +520,7 @@ def run_projection(
             scenario, accounts, contributions, income, expenses, year
         )
         debt_payments = _service_debt(accounts, distributions)
+        _process_home_sales(accounts, contributions, distributions, year)
         medicare_enrolled = sum(
             1 for person in scenario.people if person.age_in_year(year) >= 65
         )
@@ -1048,6 +1078,8 @@ def _clone_account(account: AccountYearState) -> AccountYearState:
         spouse_is_sole_beneficiary=account.spouse_is_sole_beneficiary,
         debt_annual_payment=account.debt_annual_payment,
         exclude_from_withdrawals=account.exclude_from_withdrawals,
+        sale_year=account.sale_year,
+        selling_cost_pct=account.selling_cost_pct,
     )
 
 

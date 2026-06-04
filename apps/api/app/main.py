@@ -1458,6 +1458,10 @@ def account_to_engine_state(account: Account) -> AccountYearState:
         ),
         debt_annual_payment=account.debt_annual_payment or Decimal("0"),
         exclude_from_withdrawals=account.exclude_from_withdrawals,
+        sale_year=account.sale_year,
+        selling_cost_pct=(
+            account.selling_cost_pct if account.selling_cost_pct is not None else Decimal("0.06")
+        ),
     )
 
 
