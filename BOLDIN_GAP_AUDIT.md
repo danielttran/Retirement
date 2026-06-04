@@ -16,15 +16,15 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Life expectancy / longevity per person | ✓ | ✓ | ✅ |
 | Retirement age/date per person | ✓ | ✓ | ✅ |
 | Filing status, state of residence | ✓ | ✓ | ✅ |
-| Death-of-spouse transition (filing→single, SS survivor) | ✓ | ❌ | ❌ |
+| Death-of-spouse transition (filing→single, SS survivor) | ✓ | ✓ | ✅ |
 
 ## 2. Income
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
 | Salary, part-time, bonus | ✓ | ✓ (salary) | ✅ |
-| Pension w/ COLA + survivor option | ✓ | 🟡 (COLA, no survivor %) | 🟡 |
+| Pension w/ COLA + survivor option | ✓ | ✓ | ✅ |
 | Social Security w/ claiming age | ✓ | ✓ | ✅ |
-| SS spousal + survivor benefit | ✓ | ❌ | ❌ |
+| SS spousal + survivor benefit | ✓ | ✓ (survivor) | ✅ |
 | Annuity (incl. deferred/future-purchase) | ✓ | 🟡 (basic) | 🟡 |
 | Rental / passive income | ✓ | ✓ (passive) | ✅ |
 | Windfall / one-time income | ✓ | ✓ | ✅ |
@@ -88,7 +88,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
 | Claiming-age comparison / break-even | ✓ | ✓ | ✅ |
-| Spousal / survivor modeling | ✓ | 🟡 (per-person; survivor in Wave 5) | 🟡 |
+| Spousal / survivor modeling | ✓ | ✓ (survivor benefit + death) | ✅ |
 
 ## 10. Medicare / Healthcare
 | Feature | Boldin | This app | Status |

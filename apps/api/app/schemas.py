@@ -44,6 +44,7 @@ class PersonCreate(BaseModel):
     dob: str
     retirement_date: str | None = None
     life_expectancy_age: int = Field(default=95, ge=1, le=130)
+    death_age: int | None = Field(default=None, ge=1, le=130)
 
 
 class PersonRead(PersonCreate, ApiModel):
@@ -124,6 +125,7 @@ class IncomeStreamRead(ApiModel):
     is_taxable_federal: bool
     is_taxable_state: bool
     claiming_age: int | None
+    survivor_pct: Decimal = Decimal("0")
 
 
 class IncomeStreamCreate(BaseModel):
@@ -138,6 +140,7 @@ class IncomeStreamCreate(BaseModel):
     is_taxable_federal: bool = True
     is_taxable_state: bool = True
     claiming_age: int | None = None
+    survivor_pct: Decimal = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("1"))
 
 
 class ExpenseStreamRead(ApiModel):

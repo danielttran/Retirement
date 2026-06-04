@@ -9,11 +9,16 @@ class Person:
     id: str
     dob_year: int
     age_by_year: dict[int, int] = field(default_factory=dict)
+    death_year: int | None = None
 
     def age_in_year(self, year: int) -> int:
         if year in self.age_by_year:
             return self.age_by_year[year]
         return year - self.dob_year
+
+    def is_alive(self, year: int) -> bool:
+        """A person is alive through (and including) their death year."""
+        return self.death_year is None or year <= self.death_year
 
 
 @dataclass

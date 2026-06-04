@@ -87,6 +87,7 @@ from app.schemas import (
     InsightsRead,
     MedicareEstimateRead,
     MonteCarloRead,
+    PersonCreate,
     ProjectionAccountBalanceRead,
     ProjectionRead,
     ProjectionRunMetadataRead,
@@ -246,6 +247,50 @@ def delete_household(household_id: str, session: SessionDep) -> Response:
     for sid in scenario_ids:
         clear_projection_output(sid, session)
     session.delete(household)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(
+    "/households/{household_id}/people",
+    response_model=HouseholdRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["households"],
+)
+def add_person(household_id: str, payload: PersonCreate, session: SessionDep) -> Household:
+    household = session.get(Household, household_id)
+    if household is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Household not found")
+    person = Person(
+        id=new_id(),
+        household_id=household_id,
+        name=payload.name,
+        dob=payload.dob,
+        retirement_date=payload.retirement_date,
+        life_expectancy_age=payload.life_expectancy_age,
+        death_age=payload.death_age,
+        is_primary=False,
+    )
+    session.add(person)
+    session.commit()
+    session.refresh(household)
+    return household
+
+
+@app.delete(
+    "/households/{household_id}/people/{person_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["households"],
+)
+def delete_person(household_id: str, person_id: str, session: SessionDep) -> Response:
+    person = session.get(Person, person_id)
+    if person is None or person.household_id != household_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
+    if person.is_primary:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete the primary person"
+        )
+    session.delete(person)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -1260,7 +1305,13 @@ def build_projection_input(
     session: Session,
 ) -> ScenarioInput:
     people = [
-        EnginePerson(id=person.id, dob_year=parse_year(person.dob))
+        EnginePerson(
+            id=person.id,
+            dob_year=parse_year(person.dob),
+            # A person is modeled to die at an explicit death age, else their life expectancy.
+            death_year=parse_year(person.dob)
+            + (person.death_age if person.death_age is not None else person.life_expectancy_age),
+        )
         for person in scenario.household.people
     ]
     primary = next((person for person in scenario.household.people if person.is_primary), None)
@@ -1291,6 +1342,7 @@ def build_projection_input(
             is_taxable_federal=stream.is_taxable_federal,
             is_taxable_state=stream.is_taxable_state,
             claiming_age=stream.claiming_age,
+            survivor_pct=stream.survivor_pct,
         )
         for stream in session.scalars(
             select(IncomeStream).where(IncomeStream.household_id == scenario.household_id)
@@ -1397,6 +1449,9 @@ def build_projection_input(
         start_year=datetime.now(UTC).year,
         end_year=end_year,
         primary_person_id=primary.id,
+        spouse_person_id=next(
+            (p.id for p in scenario.household.people if not p.is_primary), None
+        ),
         people=people,
         accounts=account_states,
         income_streams=income_streams,

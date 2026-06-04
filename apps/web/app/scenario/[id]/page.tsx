@@ -7,6 +7,11 @@ import { useEffect, useState } from "react";
 import { apiRequest, deleteHousehold, deleteScenario, formatMoney, type ScenarioDetail } from "../../lib/api";
 
 const NAV_ITEMS = [
+  {
+    href: "people",
+    label: "People",
+    description: "Add spouse/partner; ages, life expectancy, death age"
+  },
   { href: "accounts", label: "Accounts", description: "Cash, brokerage, IRA, 401(k), Roth, HSA" },
   {
     href: "contributions",

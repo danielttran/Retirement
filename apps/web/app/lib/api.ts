@@ -7,6 +7,7 @@ export type Person = {
   dob: string;
   retirement_date: string | null;
   life_expectancy_age: number;
+  death_age: number | null;
   is_primary: boolean;
 };
 
@@ -64,6 +65,7 @@ export type IncomeStream = {
   is_taxable_federal: boolean;
   is_taxable_state: boolean;
   claiming_age: number | null;
+  survivor_pct: string;
 };
 
 export type ExpenseStream = {

@@ -48,6 +48,8 @@ class IncomeStream:
     is_taxable_federal: bool = True
     is_taxable_state: bool = True
     claiming_age: int | None = None
+    # Fraction (0..1) of a pension that continues to the household after the owner's death.
+    survivor_pct: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -521,12 +523,15 @@ def run_projection(
         )
         debt_payments = _service_debt(accounts, distributions)
         _process_home_sales(accounts, contributions, distributions, year)
+        filing_status = _filing_status_for_year(scenario, year)
         medicare_enrolled = sum(
-            1 for person in scenario.people if person.age_in_year(year) >= 65
+            1
+            for person in scenario.people
+            if person.age_in_year(year) >= 65 and person.is_alive(year)
         )
         irmaa = irmaa_annual_surcharge(
             magi_history.get(year - 2, ZERO),
-            scenario.filing_status,
+            filing_status,
             medicare_enrolled,
             year,
             irs_data_version,
@@ -550,6 +555,7 @@ def run_projection(
             year,
             irs_data_version,
             contribution,
+            filing_status,
         )
         accounts = final_accounts
         _add_withdrawal_distributions(distributions, flex)
@@ -709,6 +715,7 @@ def _solve_flexible_withdrawals(
     year: int,
     irs_data_version: str,
     contribution: _ContributionResult,
+    filing_status: str,
 ) -> tuple[dict[str, AccountYearState], WithdrawalResult, TaxResult, bool, int]:
     prior_gap: Decimal | None = None
     best_accounts = _clone_accounts(pre_flexible_accounts)
@@ -723,6 +730,7 @@ def _solve_flexible_withdrawals(
         year,
         irs_data_version,
         contribution,
+        filing_status,
     )
 
     for iteration in range(scenario.assumptions.tax_iteration_max + 1):
@@ -765,6 +773,7 @@ def _solve_flexible_withdrawals(
             year,
             irs_data_version,
             contribution,
+            filing_status,
         )
         prior_gap = gap
 
@@ -781,6 +790,7 @@ def _compute_projection_taxes(
     year: int,
     irs_data_version: str,
     contribution: _ContributionResult,
+    filing_status: str,
 ) -> TaxResult:
     wages_federal = max(ZERO, income.wages - contribution.federal_wage_reduction)
     wages_state = max(ZERO, income.wages - contribution.state_wage_reduction)
@@ -792,7 +802,7 @@ def _compute_projection_taxes(
     return compute_taxes(
         TaxInput(
             year=year,
-            filing_status=scenario.filing_status,
+            filing_status=filing_status,
             state=scenario.state,
             ages={person.id: person.age_in_year(year) for person in scenario.people},
             wages=wages_federal,
@@ -820,34 +830,54 @@ def _income_for_year(
     year: int,
     people: dict[str, Person],
 ) -> _IncomeBuckets:
-    gross = wages = pensions_federal = pensions_state = annuity = ss = ltcg = ZERO
+    gross = wages = pensions_federal = pensions_state = annuity = ltcg = ZERO
+    ss_alive: list[Decimal] = []
+    ss_dead: list[Decimal] = []
     for stream in streams:
         if not _stream_active(stream.start_year, stream.end_year, year):
             continue
-        if stream.kind == "social_security" and stream.claiming_age is not None:
-            person = people.get(stream.person_id or "")
-            if person is not None and person.age_in_year(year) < stream.claiming_age:
-                continue
+        person = people.get(stream.person_id or "")
+        owner_alive = person is None or person.is_alive(year)
         amount = _inflate(
             stream.annual_amount,
             _income_inflation_rate(stream, assumptions),
             year - stream.start_year,
         )
-        gross += amount
         if stream.kind == "social_security":
-            ss += amount
-        elif stream.kind == "pension":
+            if stream.claiming_age is not None and person is not None:
+                if person.age_in_year(year) < stream.claiming_age:
+                    continue
+            (ss_alive if owner_alive else ss_dead).append(amount)
+            continue
+        if stream.kind == "pension":
+            if not owner_alive:
+                amount = quantize_cents(amount * stream.survivor_pct)
+            if amount <= ZERO:
+                continue
+            gross += amount
             if stream.is_taxable_federal:
                 pensions_federal += amount
             if stream.is_taxable_state:
                 pensions_state += amount
-        elif stream.kind == "annuity":
+            continue
+        # Non-pension, non-SS income from a deceased person stops.
+        if not owner_alive:
+            continue
+        gross += amount
+        if stream.kind == "annuity":
             if stream.is_taxable_federal:
                 annuity += amount
         elif stream.kind == "passive":
             ltcg += amount if stream.is_taxable_federal else ZERO
         elif stream.is_taxable_federal:
             wages += amount
+
+    # Social Security survivor rule: the survivor receives the greater of their own benefit or the
+    # deceased spouse's benefit; the smaller one stops.
+    ss = sum(ss_alive, ZERO)
+    if ss_dead:
+        ss += max(ZERO, max(ss_dead) - (max(ss_alive) if ss_alive else ZERO))
+    gross += ss
     return _IncomeBuckets(
         quantize_cents(gross),
         quantize_cents(wages),
@@ -877,6 +907,14 @@ def _expenses_for_year(
 
 def _stream_active(start_year: int, end_year: int | None, year: int) -> bool:
     return start_year <= year and (end_year is None or year <= end_year)
+
+
+def _filing_status_for_year(scenario: ScenarioInput, year: int) -> str:
+    """Joint filers revert to single after the first spouse's death."""
+    if scenario.filing_status in {"mfj", "qw"}:
+        if any(not person.is_alive(year) for person in scenario.people):
+            return "single"
+    return scenario.filing_status
 
 
 def _income_inflation_rate(stream: IncomeStream, assumptions: AssumptionSet) -> Decimal:

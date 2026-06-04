@@ -43,6 +43,7 @@ class Person(Base):
     dob: Mapped[str] = mapped_column(String, nullable=False)
     retirement_date: Mapped[str | None] = mapped_column(String, nullable=True)
     life_expectancy_age: Mapped[int] = mapped_column(nullable=False)
+    death_age: Mapped[int | None] = mapped_column(nullable=True)
     is_primary: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     household: Mapped[Household] = relationship(back_populates="people")
@@ -129,6 +130,7 @@ class IncomeStream(Base):
     is_taxable_federal: Mapped[bool] = mapped_column(default=True, nullable=False)
     is_taxable_state: Mapped[bool] = mapped_column(default=True, nullable=False)
     claiming_age: Mapped[int | None] = mapped_column(nullable=True)
+    survivor_pct: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
 
     household: Mapped[Household] = relationship(back_populates="income_streams")
     person: Mapped[Person | None] = relationship(back_populates="income_streams")

@@ -2530,3 +2530,61 @@ def test_insights_endpoint(client: TestClient) -> None:
     assert 0 <= body["score"] <= 100
     assert body["rating"] in {"Excellent", "Good", "Fair", "At Risk"}
     assert len(body["components"]) >= 3
+
+
+def test_add_and_delete_spouse(client: TestClient, scenario: dict) -> None:
+    hid = scenario["household_id"]
+    resp = client.post(
+        f"/households/{hid}/people",
+        json={"name": "Sam", "dob": "1962-03-01", "life_expectancy_age": 90, "death_age": 88},
+    )
+    assert resp.status_code == 201
+    people = resp.json()["people"]
+    assert len(people) == 2
+    spouse = next(p for p in people if not p["is_primary"])
+    assert spouse["death_age"] == 88
+    # Cannot delete the primary person.
+    primary = next(p for p in people if p["is_primary"])
+    assert client.delete(f"/households/{hid}/people/{primary['id']}").status_code == 400
+    # Can delete the spouse.
+    assert client.delete(f"/households/{hid}/people/{spouse['id']}").status_code == 204
+
+
+def test_survivor_changes_projection_for_couple(client: TestClient) -> None:
+    hh = client.post(
+        "/households",
+        json={
+            "name": "Couple",
+            "filing_status": "mfj",
+            "state": "MA",
+            "primary_person": {"name": "A", "dob": "1950-01-01", "life_expectancy_age": 78},
+            "scenario_name": "Base",
+        },
+    ).json()
+    sid = hh["id"]
+    hid = hh["household_id"]
+    pid_a = hh["household"]["people"][0]["id"]
+    b = client.post(
+        f"/households/{hid}/people",
+        json={"name": "B", "dob": "1952-01-01", "life_expectancy_age": 90},
+    ).json()["people"]
+    pid_b = next(p["id"] for p in b if not p["is_primary"])
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": pid_a, "name": "Cash", "account_type": "cash",
+            "current_balance": "2000000", "expected_return": "0",
+        },
+    )
+    for pid, amt in ((pid_a, "40000"), (pid_b, "24000")):
+        client.post(
+            f"/scenarios/{sid}/income-streams",
+            json={
+                "name": "SS", "kind": "social_security", "annual_amount": amt,
+                "start_year": 2024, "inflation_kind": "none", "person_id": pid, "claiming_age": 62,
+            },
+        )
+    run = client.post(f"/scenarios/{sid}/run-projection").json()
+    years = {y["year"]: y for y in run["years"]}
+    # A dies at 78 (born 1950 → 2028). Year 2029: survivor B gets max(24000, 40000) = 40000.
+    assert Decimal(years[2029]["gross_income"]) == Decimal("40000.00")

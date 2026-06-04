@@ -61,7 +61,9 @@ export default function IncomePage() {
           : null,
       is_taxable_federal: form.get("isTaxableFederal") === "on",
       is_taxable_state: form.get("isTaxableState") === "on",
-      claiming_age: kind === "social_security" ? Number(form.get("claimingAge")) : null
+      claiming_age: kind === "social_security" ? Number(form.get("claimingAge")) : null,
+      survivor_pct:
+        kind === "pension" ? String(Number(form.get("survivorPct") ?? 0) / 100) : "0"
     };
     try {
       await apiRequest<IncomeStream>(`/scenarios/${params.id}/income-streams`, {
@@ -216,6 +218,20 @@ export default function IncomePage() {
                   defaultValue="67"
                   name="claimingAge"
                   required
+                  type="number"
+                />
+              </label>
+            ) : null}
+
+            {selectedKind === "pension" ? (
+              <label className="flex flex-col gap-1 text-sm font-medium text-stone-800">
+                Survivor benefit % (continues after owner&apos;s death)
+                <input
+                  className="h-10 rounded-md border border-stone-300 px-3"
+                  defaultValue="0"
+                  max="100"
+                  min="0"
+                  name="survivorPct"
                   type="number"
                 />
               </label>
