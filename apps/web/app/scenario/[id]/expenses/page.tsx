@@ -91,6 +91,26 @@ export default function ExpensesPage() {
     }
   }
 
+  async function addAcaEstimate() {
+    setError(null);
+    try {
+      const est = await apiRequest<{ annual_per_person: string }>(`/calculators/aca?age=60`);
+      await apiRequest<ExpenseStream>(`/scenarios/${params.id}/expense-streams`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Pre-65 ACA (est.)",
+          kind: "healthcare",
+          annual_amount: est.annual_per_person,
+          start_year: new Date().getFullYear(),
+          inflation_kind: "healthcare"
+        })
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to add estimate");
+    }
+  }
+
   async function deleteStream(streamId: string) {
     setError(null);
     try {
@@ -253,6 +273,15 @@ export default function ExpensesPage() {
                   Add {h}
                 </button>
               ))}
+              <button
+                className="h-9 rounded-md border border-stone-300 px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                onClick={() => {
+                  void addAcaEstimate();
+                }}
+                type="button"
+              >
+                Add pre-65 ACA
+              </button>
             </div>
           </div>
         </aside>

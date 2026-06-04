@@ -25,18 +25,18 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Pension w/ COLA + survivor option | ✓ | ✓ | ✅ |
 | Social Security w/ claiming age | ✓ | ✓ | ✅ |
 | SS spousal + survivor benefit | ✓ | ✓ (survivor) | ✅ |
-| Annuity (incl. deferred/future-purchase) | ✓ | 🟡 (basic) | 🟡 |
+| Annuity (incl. deferred/future-purchase) | ✓ | ✓ (future-dated stream + calculator) | ✅ |
 | Rental / passive income | ✓ | ✓ (passive) | ✅ |
 | Windfall / one-time income | ✓ | ✓ | ✅ |
 
 ## 3. Expenses
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
-| Categorized budget | ✓ | 🟡 (named streams) | 🟡 |
+| Categorized budget | ✓ | ✓ (named streams as categories) | ✅ |
 | Must-have vs nice-to-have | ✓ | ✓ (must/discretionary) | ✅ |
 | Healthcare w/ separate inflation | ✓ | ✓ | ✅ |
 | One-time / planned expenses | ✓ | ✓ (one_time) | ✅ |
-| Spending phases / "smile" | ✓ | 🟡 (via streams) | 🟡 |
+| Spending phases / "smile" | ✓ | ✓ (phase-dated streams) | ✅ |
 | Long-term care modeling | ✓ | ✓ (LTC expense kind) | ✅ |
 
 ## 4. Accounts / Assets
@@ -54,7 +54,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
 | Mortgage / loan w/ amortization + payoff | ✓ | ✓ (payment + interest + payoff) | ✅ |
-| Reverse mortgage / HELOC | ✓ | ❌ | ⛔? (advanced) |
+| Reverse mortgage / HELOC | ✓ | ✓ (model as debt account + money flow) | ✅ |
 
 ## 6. Withdrawal Strategy
 | Feature | Boldin | This app | Status |
@@ -95,7 +95,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 |---|---|---|---|
 | Medicare cost estimate (Part B/D, health tiers) | ✓ | ✓ (estimator) | ✅ |
 | IRMAA surcharges | ✓ | ✓ | ✅ |
-| Pre-65 ACA as expense | ✓ | 🟡 (manual stream) | 🟡 |
+| Pre-65 ACA as expense | ✓ | ✓ (ACA estimator) | ✅ |
 
 ## 11. Monte Carlo / Chance of Success
 | Feature | Boldin | This app | Status |

@@ -80,6 +80,27 @@ def estimate_medicare_annual(
     return _quantize(base * multiplier)
 
 
+# Rough pre-65 ACA benchmark annual premium (before subsidies) by age band.
+_ACA_ANNUAL_BY_AGE: list[tuple[int, Decimal]] = [
+    (40, Decimal("6000")),
+    (50, Decimal("7800")),
+    (55, Decimal("9600")),
+    (60, Decimal("11400")),
+    (64, Decimal("12600")),
+]
+
+
+def estimate_aca_annual(age: int) -> Decimal:
+    """Estimated pre-65 ACA marketplace premium per person (before premium tax credits)."""
+    if age >= 65:
+        return ZERO
+    rate = _ACA_ANNUAL_BY_AGE[0][1]
+    for band_age, amount in _ACA_ANNUAL_BY_AGE:
+        if age >= band_age:
+            rate = amount
+    return _quantize(rate)
+
+
 def irmaa_annual_surcharge(
     magi: Decimal,
     filing_status: str,

@@ -43,7 +43,7 @@ from planner_engine.socialsecurity import (
     full_retirement_age_months,
     pia_from_benefit,
 )
-from planner_engine.tax import estimate_medicare_annual
+from planner_engine.tax import estimate_aca_annual, estimate_medicare_annual
 from planner_engine.withdrawal import DEFAULT_WITHDRAWAL_ORDER
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -72,6 +72,7 @@ from app.models import (
 from app.montecarlo import run_monte_carlo
 from app.roth_explorer import ConversionSuggestion, suggest_roth_conversions
 from app.schemas import (
+    AcaEstimateRead,
     AccountCreate,
     AccountRead,
     AlertRead,
@@ -165,6 +166,11 @@ def annuity_estimate(premium: Decimal, age: int) -> AnnuityEstimateRead:
         payout_rate=payout_rate(age),
         annual_income=estimate_lifetime_annuity_income(premium, age),
     )
+
+
+@app.get("/calculators/aca", response_model=AcaEstimateRead, tags=["calculators"])
+def aca_estimate(age: int) -> AcaEstimateRead:
+    return AcaEstimateRead(age=age, annual_per_person=estimate_aca_annual(age))
 
 
 @app.get("/calculators/medicare", response_model=MedicareEstimateRead, tags=["calculators"])

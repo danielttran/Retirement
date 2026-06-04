@@ -483,6 +483,11 @@ class MedicareEstimateRead(BaseModel):
     include_dental_vision: bool
 
 
+class AcaEstimateRead(BaseModel):
+    age: int
+    annual_per_person: Decimal
+
+
 class MonteCarloRead(BaseModel):
     trials: int
     success_count: int

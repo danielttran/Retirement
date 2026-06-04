@@ -79,3 +79,11 @@ def test_medicare_estimate_health_tiers() -> None:
     # good: (174.70 + 55.50 + 150.00 + 50.00) * 12 = 5162.40
     assert good == Decimal("5162.40")
     assert estimate_medicare_annual("good", include_dental_vision=False) < good
+
+
+def test_aca_estimate_by_age() -> None:
+    from planner_engine.tax import estimate_aca_annual
+
+    assert estimate_aca_annual(45) > Decimal("0")
+    assert estimate_aca_annual(60) > estimate_aca_annual(50)
+    assert estimate_aca_annual(65) == Decimal("0")  # Medicare-eligible
