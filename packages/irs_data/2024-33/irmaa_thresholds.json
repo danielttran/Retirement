@@ -1,0 +1,25 @@
+{
+  "_comment": "2024 Medicare IRMAA surcharges (based on MAGI from 2 years prior). partB/partD are MONTHLY surcharges ABOVE the standard premium. magiFloor is the lower bound of the tier. Thresholds indexed forward via bracket_indexing_rate for future years.",
+  "baseYear": "2024",
+  "single": [
+    {"magiFloor": "0", "partB": "0", "partD": "0"},
+    {"magiFloor": "103000", "partB": "69.90", "partD": "12.90"},
+    {"magiFloor": "129000", "partB": "174.70", "partD": "33.30"},
+    {"magiFloor": "161000", "partB": "279.50", "partD": "53.80"},
+    {"magiFloor": "193000", "partB": "384.30", "partD": "74.20"},
+    {"magiFloor": "500000", "partB": "419.30", "partD": "81.00"}
+  ],
+  "mfj": [
+    {"magiFloor": "0", "partB": "0", "partD": "0"},
+    {"magiFloor": "206000", "partB": "69.90", "partD": "12.90"},
+    {"magiFloor": "258000", "partB": "174.70", "partD": "33.30"},
+    {"magiFloor": "322000", "partB": "279.50", "partD": "53.80"},
+    {"magiFloor": "386000", "partB": "384.30", "partD": "74.20"},
+    {"magiFloor": "750000", "partB": "419.30", "partD": "81.00"}
+  ],
+  "mfs": [
+    {"magiFloor": "0", "partB": "0", "partD": "0"},
+    {"magiFloor": "103000", "partB": "384.30", "partD": "74.20"},
+    {"magiFloor": "397000", "partB": "419.30", "partD": "81.00"}
+  ]
+}

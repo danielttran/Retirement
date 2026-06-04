@@ -7,6 +7,7 @@ export type Person = {
   dob: string;
   retirement_date: string | null;
   life_expectancy_age: number;
+  death_age: number | null;
   is_primary: boolean;
 };
 
@@ -37,6 +38,10 @@ export type Account = {
   expected_return: string;
   cost_basis_pct: string | null;
   roth_first_contribution_year: number | null;
+  debt_annual_payment: string;
+  exclude_from_withdrawals: boolean;
+  sale_year: number | null;
+  selling_cost_pct: string;
   created_at: string;
 };
 
@@ -60,6 +65,7 @@ export type IncomeStream = {
   is_taxable_federal: boolean;
   is_taxable_state: boolean;
   claiming_age: number | null;
+  survivor_pct: string;
 };
 
 export type ExpenseStream = {
@@ -81,7 +87,9 @@ export type AssumptionSet = {
   healthcare_inflation_rate: string;
   ss_cola_rate: string;
   pension_cola_rate: string;
+  housing_appreciation_rate: string;
   bracket_indexing_rate: string;
+  itemized_deductions: string;
   cash_reserve_target_months: number;
   irs_data_version: string;
   engine_version: string;
@@ -123,6 +131,28 @@ export type SeppPlan = {
   switched_to_rmd_year: number | null;
 };
 
+export type Contribution = {
+  id: string;
+  scenario_id: string;
+  account_id: string;
+  annual_amount: string;
+  start_year: number;
+  end_year: number | null;
+  inflation_kind: string;
+  custom_inflation_rate: string | null;
+  employer_match_amount: string;
+};
+
+export type MoneyFlow = {
+  id: string;
+  scenario_id: string;
+  from_account_id: string;
+  to_account_id: string;
+  year: number;
+  amount: string;
+  notes: string | null;
+};
+
 export type RothConversionPlan = {
   id: string;
   scenario_id: string;
@@ -150,6 +180,8 @@ export type ProjectionYear = {
   magi: string;
   provisional_income: string;
   ss_taxable_portion: string;
+  ordinary_taxable_income: string;
+  medicare_irmaa: string;
   surplus: string;
   ending_net_worth: string;
 };
@@ -185,11 +217,106 @@ export type ProjectionRunMetadata = {
   convergence_log_json: string | null;
 };
 
+export type ProjectionSummary = {
+  final_year: number;
+  final_age: number;
+  estate_net_worth: string;
+  peak_net_worth: string;
+  peak_net_worth_year: number;
+  lifetime_federal_tax: string;
+  lifetime_state_tax: string;
+  lifetime_penalties: string;
+  lifetime_total_tax: string;
+  total_lifetime_income: string;
+  total_lifetime_expenses: string;
+  total_lifetime_roth_conversions: string;
+  total_lifetime_irmaa: string;
+  out_of_savings_year: number | null;
+  out_of_savings_age: number | null;
+};
+
 export type ProjectionRun = {
   metadata: ProjectionRunMetadata;
   years: ProjectionYear[];
   account_balances: ProjectionAccountBalance[];
   warnings: ProjectionWarning[];
+  summary: ProjectionSummary | null;
+};
+
+export type ConversionSuggestion = {
+  year: number;
+  amount: string;
+  ordinary_taxable_income: string;
+  magi: string;
+  headroom: string;
+  traditional_balance: string;
+};
+
+export type RothExplorerResult = {
+  strategy: string;
+  source_account_id: string | null;
+  destination_account_id: string | null;
+  suggestions: ConversionSuggestion[];
+  total_converted: string;
+  baseline_lifetime_tax: string;
+  projected_lifetime_tax: string;
+  baseline_estate: string;
+  projected_estate: string;
+  note: string | null;
+};
+
+export type ScoreComponent = {
+  label: string;
+  score: number;
+  weight: number;
+  detail: string;
+};
+
+export type InsightAlert = {
+  severity: "success" | "info" | "warning" | "critical";
+  title: string;
+  message: string;
+};
+
+export type InsightsResult = {
+  score: number;
+  rating: string;
+  components: ScoreComponent[];
+  alerts: InsightAlert[];
+};
+
+export type ClaimingOption = {
+  claiming_age: number;
+  monthly_benefit: string;
+  annual_benefit: string;
+  lifetime_total: string;
+  break_even_age_vs_earliest: number | null;
+};
+
+export type SocialSecurityExplorerResult = {
+  person_id: string;
+  person_name: string;
+  pia_annual: string;
+  full_retirement_age_months: number;
+  current_claiming_age: number | null;
+  options: ClaimingOption[];
+  max_lifetime_claiming_age: number;
+};
+
+export type AssumptionComparison = {
+  average: ProjectionSummary;
+  optimistic: ProjectionSummary;
+  pessimistic: ProjectionSummary;
+};
+
+export type MonteCarloResult = {
+  trials: number;
+  success_count: number;
+  chance_of_success: string;
+  p10_estate: string;
+  p50_estate: string;
+  p90_estate: string;
+  median_out_of_savings_age: number | null;
 };
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {

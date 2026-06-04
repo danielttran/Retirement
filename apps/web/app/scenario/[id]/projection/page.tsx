@@ -17,6 +17,8 @@ import {
   apiRequest,
   downloadCsv,
   formatMoney,
+  type AssumptionComparison,
+  type MonteCarloResult,
   type ProjectionRun,
   type ProjectionWarning
 } from "../../../lib/api";
@@ -37,6 +39,20 @@ export default function ProjectionPage() {
   const [error, setError] = useState<string | null>(null);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
   const [showInfos, setShowInfos] = useState(false);
+  const [monteCarlo, setMonteCarlo] = useState<MonteCarloResult | null>(null);
+  const [isRunningMc, setIsRunningMc] = useState(false);
+  const [variant, setVariant] = useState("average");
+  const [comparison, setComparison] = useState<AssumptionComparison | null>(null);
+
+  async function loadComparison() {
+    try {
+      setComparison(
+        await apiRequest<AssumptionComparison>(`/scenarios/${params.id}/assumption-comparison`)
+      );
+    } catch {
+      // ignore — needs a runnable scenario
+    }
+  }
 
   useEffect(() => {
     apiRequest<ProjectionRun>(`/scenarios/${params.id}/projection`)
@@ -55,14 +71,31 @@ export default function ProjectionPage() {
     setError(null);
     setWarningsDismissed(false);
     try {
-      const result = await apiRequest<ProjectionRun>(`/scenarios/${params.id}/run-projection`, {
-        method: "POST"
-      });
+      const result = await apiRequest<ProjectionRun>(
+        `/scenarios/${params.id}/run-projection?variant=${variant}`,
+        { method: "POST" }
+      );
       setProjection(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Projection failed");
     } finally {
       setIsRunning(false);
+    }
+  }
+
+  async function runMonteCarlo() {
+    setIsRunningMc(true);
+    setError(null);
+    try {
+      const result = await apiRequest<MonteCarloResult>(
+        `/scenarios/${params.id}/monte-carlo?trials=500`,
+        { method: "POST" }
+      );
+      setMonteCarlo(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Monte Carlo failed");
+    } finally {
+      setIsRunningMc(false);
     }
   }
 
@@ -141,6 +174,18 @@ export default function ProjectionPage() {
           >
             {isRunning ? "Running…" : projection ? "Re-run Projection" : "Run Projection"}
           </button>
+          <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
+            Assumptions
+            <select
+              className="h-10 rounded-md border border-stone-300 px-2"
+              onChange={(e) => setVariant(e.target.value)}
+              value={variant}
+            >
+              <option value="average">Average</option>
+              <option value="optimistic">Optimistic</option>
+              <option value="pessimistic">Pessimistic</option>
+            </select>
+          </label>
           {projection ? (
             <>
               <button
@@ -156,6 +201,13 @@ export default function ProjectionPage() {
                 type="button"
               >
                 Export balances CSV
+              </button>
+              <button
+                className="h-9 rounded-md border border-stone-300 px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                onClick={() => window.print()}
+                type="button"
+              >
+                Print / Save PDF
               </button>
             </>
           ) : null}
@@ -224,6 +276,208 @@ export default function ProjectionPage() {
               {projection.metadata.engine_version} · IRS {projection.metadata.irs_data_version}
             </div>
 
+            {/* Headline metrics — Boldin-style summary */}
+            {projection.summary ? (
+              <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div
+                  className={`rounded-md border p-4 ${
+                    projection.summary.out_of_savings_age === null
+                      ? "border-emerald-300 bg-emerald-50"
+                      : "border-amber-300 bg-amber-50"
+                  }`}
+                >
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                    Savings last until
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-stone-950">
+                    {projection.summary.out_of_savings_age === null
+                      ? `Age ${projection.summary.final_age}+`
+                      : `Age ${projection.summary.out_of_savings_age}`}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    {projection.summary.out_of_savings_age === null
+                      ? "Liquid savings never deplete"
+                      : `Out of savings in ${projection.summary.out_of_savings_year}`}
+                  </p>
+                </div>
+                <div className="rounded-md border border-stone-300 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                    Estate at age {projection.summary.final_age}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-stone-950">
+                    {formatMoney(projection.summary.estate_net_worth)}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Peak {formatMoney(projection.summary.peak_net_worth)} in{" "}
+                    {projection.summary.peak_net_worth_year}
+                  </p>
+                </div>
+                <div className="rounded-md border border-stone-300 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                    Lifetime taxes
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-stone-950">
+                    {formatMoney(projection.summary.lifetime_total_tax)}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Fed {formatMoney(projection.summary.lifetime_federal_tax)} · State{" "}
+                    {formatMoney(projection.summary.lifetime_state_tax)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-stone-300 bg-white p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                    Lifetime income
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-stone-950">
+                    {formatMoney(projection.summary.total_lifetime_income)}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    Spending {formatMoney(projection.summary.total_lifetime_expenses)}
+                  </p>
+                </div>
+              </section>
+            ) : null}
+
+            {/* Monte Carlo — chance of success */}
+            <section className="rounded-md border border-stone-300 bg-white p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-stone-950">
+                  Chance of Success (Monte Carlo)
+                </h2>
+                <button
+                  className="h-9 rounded-md bg-stone-800 px-4 text-sm font-semibold text-white hover:bg-stone-900 disabled:opacity-60"
+                  disabled={isRunningMc}
+                  onClick={() => {
+                    void runMonteCarlo();
+                  }}
+                  type="button"
+                >
+                  {isRunningMc ? "Running 500 simulations…" : "Run Monte Carlo"}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-stone-500">
+                Runs 500 simulations, randomizing investment returns and inflation each year. A run
+                succeeds only if liquid savings never reach $0.
+              </p>
+              {monteCarlo ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                  <div
+                    className={`rounded-md border p-4 ${
+                      Number(monteCarlo.chance_of_success) >= 80
+                        ? "border-emerald-300 bg-emerald-50"
+                        : Number(monteCarlo.chance_of_success) >= 60
+                          ? "border-amber-300 bg-amber-50"
+                          : "border-red-300 bg-red-50"
+                    }`}
+                  >
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                      Chance of success
+                    </p>
+                    <p className="mt-1 text-3xl font-semibold text-stone-950">
+                      {monteCarlo.chance_of_success}%
+                    </p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      {monteCarlo.success_count}/{monteCarlo.trials} simulations
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-stone-300 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                      Estate — pessimistic (10th)
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-stone-950">
+                      {formatMoney(monteCarlo.p10_estate)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-stone-300 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                      Estate — median (50th)
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-stone-950">
+                      {formatMoney(monteCarlo.p50_estate)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-stone-300 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                      Estate — optimistic (90th)
+                    </p>
+                    <p className="mt-1 text-xl font-semibold text-stone-950">
+                      {formatMoney(monteCarlo.p90_estate)}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+
+            {/* Optimistic / Average / Pessimistic comparison */}
+            <section className="rounded-md border border-stone-300 bg-white p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold text-stone-950">
+                  Optimistic vs Average vs Pessimistic
+                </h2>
+                <button
+                  className="h-9 rounded-md border border-stone-300 px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                  onClick={() => {
+                    void loadComparison();
+                  }}
+                  type="button"
+                >
+                  Compare assumptions
+                </button>
+              </div>
+              {comparison ? (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-stone-50 text-xs text-stone-500">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Metric</th>
+                        <th className="px-4 py-2 text-right">Pessimistic</th>
+                        <th className="px-4 py-2 text-right">Average</th>
+                        <th className="px-4 py-2 text-right">Optimistic</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      <tr>
+                        <td className="px-4 py-2 font-medium">Estate at longevity</td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.pessimistic.estate_net_worth)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.average.estate_net_worth)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.optimistic.estate_net_worth)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2 font-medium">Savings last until age</td>
+                        <td className="px-4 py-2 text-right">
+                          {comparison.pessimistic.out_of_savings_age ?? "never depletes"}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {comparison.average.out_of_savings_age ?? "never depletes"}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {comparison.optimistic.out_of_savings_age ?? "never depletes"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2 font-medium">Lifetime taxes</td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.pessimistic.lifetime_total_tax)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.average.lifetime_total_tax)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {formatMoney(comparison.optimistic.lifetime_total_tax)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </section>
+
             {/* Net Worth chart */}
             <section className="rounded-md border border-stone-300 bg-white p-5">
               <h2 className="mb-4 text-base font-semibold text-stone-950">
@@ -266,6 +520,7 @@ export default function ProjectionPage() {
                         "Federal tax",
                         "State tax",
                         "MAGI",
+                        "IRMAA",
                         "Surplus",
                         "Net worth"
                       ].map((h) => (
@@ -296,6 +551,9 @@ export default function ProjectionPage() {
                         <td className="px-4 py-2 text-right">{formatMoney(row.federal_tax)}</td>
                         <td className="px-4 py-2 text-right">{formatMoney(row.state_tax)}</td>
                         <td className="px-4 py-2 text-right">{formatMoney(row.magi)}</td>
+                        <td className="px-4 py-2 text-right text-stone-600">
+                          {Number(row.medicare_irmaa) > 0 ? formatMoney(row.medicare_irmaa) : "—"}
+                        </td>
                         <td
                           className={`px-4 py-2 text-right font-medium ${Number(row.surplus) < 0 ? "text-red-700" : "text-emerald-700"}`}
                         >

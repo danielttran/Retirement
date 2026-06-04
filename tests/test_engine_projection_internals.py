@@ -1,10 +1,10 @@
 """Targeted tests to close remaining coverage gaps in planner_engine."""
 from __future__ import annotations
 
-import pytest
 from decimal import Decimal
 
-from planner_engine.common import AccountYearState, Person, RothConversionLotState
+import pytest
+from planner_engine.common import AccountYearState, Person
 from planner_engine.projection import (
     AssumptionSet,
     ExpenseStream,
@@ -14,8 +14,8 @@ from planner_engine.projection import (
     run_projection,
 )
 from planner_engine.projection.runner import (
-    _income_inflation_rate,
     _expense_inflation_rate,
+    _income_inflation_rate,
     _stream_active,
 )
 from planner_engine.rmd.engine import rmd_applicable_for_person
@@ -23,10 +23,9 @@ from planner_engine.roth import RothConversionPlan
 from planner_engine.tax.engine import _required_decimal
 from planner_engine.withdrawal.engine import (
     _account_matches_bucket,
-    withdraw_from_roth,
     execute_withdrawals,
+    withdraw_from_roth,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -165,7 +164,9 @@ def test_inactive_income_stream_excluded_from_projection() -> None:
             [account("cash", "cash", "100000")],
             income_streams=[
                 # Stream ends before start_year — should be ignored
-                IncomeStream("s", "salary", Decimal("50000"), 2020, end_year=2023, inflation_kind="none")
+                IncomeStream(
+                    "s", "salary", Decimal("50000"), 2020, end_year=2023, inflation_kind="none"
+                )
             ],
         ),
         "2024-33",
@@ -212,7 +213,9 @@ def test_sepp_underfunded_triggers_warning() -> None:
         scenario(
             [ira, cash],
             sepp_plans=[
-                SeppProjectionPlan("sepp1", "ira", "fixed_amortization", "active", 2024, 2030, Decimal("1000"))
+                SeppProjectionPlan(
+                    "sepp1", "ira", "fixed_amortization", "active", 2024, 2030, Decimal("1000")
+                )
             ],
         ),
         "2024-33",

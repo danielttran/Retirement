@@ -15,6 +15,7 @@ import {
   LineChart,
   ReferenceLine,
   ResponsiveContainer,
+  Sankey,
   Tooltip,
   XAxis,
   YAxis
@@ -156,6 +157,78 @@ export default function ChartsPage() {
   const magiData = projection.years
     .filter((y) => y.age_primary < 65)
     .map((y) => ({ year: y.year, magi: Number(y.magi) }));
+
+  // --- Chart 7: Roth conversions + IRMAA surcharges ---
+  const conversionIrmaaData = projection.years.map((y) => ({
+    year: y.year,
+    conversions: Number(y.roth_conversions),
+    irmaa: Number(y.medicare_irmaa)
+  }));
+  const hasConversionsOrIrmaa = conversionIrmaaData.some(
+    (r) => r.conversions > 0 || r.irmaa > 0
+  );
+
+  // --- Chart 8: Tax-bracket fill (ordinary taxable income vs 2024 bracket tops) ---
+  const BRACKET_TOPS_2024: Record<string, { rate: string; top: number }[]> = {
+    single: [
+      { rate: "10%", top: 11600 },
+      { rate: "12%", top: 47150 },
+      { rate: "22%", top: 100525 },
+      { rate: "24%", top: 191950 },
+      { rate: "32%", top: 243725 },
+      { rate: "35%", top: 609350 }
+    ],
+    mfj: [
+      { rate: "10%", top: 23200 },
+      { rate: "12%", top: 94300 },
+      { rate: "22%", top: 201050 },
+      { rate: "24%", top: 383900 },
+      { rate: "32%", top: 487450 },
+      { rate: "35%", top: 731200 }
+    ]
+  };
+  const filingStatus = scenario.household.filing_status === "mfj" ? "mfj" : "single";
+  const bracketTops = BRACKET_TOPS_2024[filingStatus];
+  const bracketData = projection.years.map((y) => ({
+    year: y.year,
+    taxable: Number(y.ordinary_taxable_income)
+  }));
+
+  // --- Chart 9: Sankey lifetime cash flow ---
+  const projectionYears = projection.years;
+  const sumBy = (fn: (y: (typeof projectionYears)[number]) => number) =>
+    projectionYears.reduce((acc, y) => acc + fn(y), 0);
+  const sankeyIncome = sumBy((y) => Number(y.gross_income));
+  const sankeyWithdrawals = sumBy(
+    (y) => Number(y.required_distributions) + Number(y.flexible_withdrawals)
+  );
+  const sankeyTaxes = sumBy(
+    (y) =>
+      Number(y.federal_tax) +
+      Number(y.state_tax) +
+      Number(y.early_withdrawal_penalty) +
+      Number(y.medicare_irmaa)
+  );
+  const sankeyExpenses = sumBy((y) => Number(y.expenses));
+  const sankeyTotalCash = sankeyIncome + sankeyWithdrawals;
+  const sankeySurplus = Math.max(0, sankeyTotalCash - sankeyTaxes - sankeyExpenses);
+  const sankeyData = {
+    nodes: [
+      { name: "Income & SS" },
+      { name: "Withdrawals" },
+      { name: "Total cash" },
+      { name: "Taxes" },
+      { name: "Living expenses" },
+      { name: "Surplus / savings" }
+    ],
+    links: [
+      { source: 0, target: 2, value: Math.max(1, sankeyIncome) },
+      { source: 1, target: 2, value: Math.max(1, sankeyWithdrawals) },
+      { source: 2, target: 3, value: Math.max(1, sankeyTaxes) },
+      { source: 2, target: 4, value: Math.max(1, sankeyExpenses) },
+      { source: 2, target: 5, value: Math.max(1, sankeySurplus) }
+    ]
+  };
 
   return (
     <main className="min-h-screen px-6 py-8">
@@ -343,6 +416,79 @@ export default function ChartsPage() {
             6. MAGI vs. ACA Thresholds — no pre-65 years in projection.
           </section>
         )}
+
+        {/* Chart 7: Roth conversions + IRMAA */}
+        {hasConversionsOrIrmaa ? (
+          <section className="rounded-md border border-stone-300 bg-white p-5">
+            <h2 className="mb-4 text-base font-semibold text-stone-950">
+              7. Roth Conversions &amp; Medicare IRMAA
+            </h2>
+            <ResponsiveContainer height={280} width="100%">
+              <BarChart data={conversionIrmaaData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
+                <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={fmtK} tick={{ fontSize: 11 }} width={68} />
+                <Tooltip formatter={(v: number) => formatMoney(v)} />
+                <Legend />
+                <Bar dataKey="conversions" fill="#7c3aed" name="Roth conversions" />
+                <Bar dataKey="irmaa" fill="#dc2626" name="IRMAA surcharge" />
+              </BarChart>
+            </ResponsiveContainer>
+          </section>
+        ) : null}
+
+        {/* Chart 8: Tax-bracket fill */}
+        <section className="rounded-md border border-stone-300 bg-white p-5">
+          <h2 className="mb-4 text-base font-semibold text-stone-950">
+            8. Tax-Bracket Fill (ordinary taxable income vs {filingStatus.toUpperCase()} brackets)
+          </h2>
+          <p className="mb-3 text-xs text-stone-400">
+            Gaps below a bracket line reveal headroom for Roth conversions. Bracket tops shown in
+            2024 dollars.
+          </p>
+          <ResponsiveContainer height={300} width="100%">
+            <LineChart data={bracketData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
+              <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={fmtK} tick={{ fontSize: 11 }} width={68} />
+              <Tooltip formatter={(v: number) => formatMoney(v)} />
+              <Line
+                dataKey="taxable"
+                dot={false}
+                name="Ordinary taxable income"
+                stroke="#059669"
+                strokeWidth={2}
+                type="monotone"
+              />
+              {bracketTops.map((b) => (
+                <ReferenceLine
+                  key={b.rate}
+                  label={{ value: b.rate, position: "right", fontSize: 10 }}
+                  stroke="#94a3b8"
+                  strokeDasharray="4 2"
+                  y={b.top}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </section>
+
+        {/* Chart 9: Sankey lifetime cash flow */}
+        <section className="rounded-md border border-stone-300 bg-white p-5">
+          <h2 className="mb-4 text-base font-semibold text-stone-950">
+            9. Lifetime Cash Flow (Sankey)
+          </h2>
+          <ResponsiveContainer height={320} width="100%">
+            <Sankey
+              data={sankeyData}
+              link={{ stroke: "#a7f3d0" }}
+              node={{ fill: "#059669" }}
+              nodePadding={30}
+            >
+              <Tooltip formatter={(v: number) => formatMoney(v)} />
+            </Sankey>
+          </ResponsiveContainer>
+        </section>
       </div>
     </main>
   );

@@ -23,6 +23,7 @@ class TaxInput:
     state: str
     ages: dict[str, int]
     wages: Decimal = ZERO
+    wages_state: Decimal | None = None
     pensions_taxable_federal: Decimal = ZERO
     pensions_taxable_state: Decimal = ZERO
     traditional_distributions: Decimal = ZERO
@@ -35,6 +36,7 @@ class TaxInput:
     penalty_eligible_distributions: Decimal = ZERO
     hsa_penalty_eligible_distributions: Decimal = ZERO
     tax_exempt_interest: Decimal = ZERO
+    itemized_deductions: Decimal = ZERO
     irs_data_version: str = MA_DEFAULT_VERSION
 
 
@@ -275,8 +277,10 @@ def compute_taxes(inp: TaxInput) -> TaxResult:
     non_taxable_ss = inp.ss_gross - ss_taxable
     magi = agi + inp.tax_exempt_interest + non_taxable_ss
     standard_deduction = get_standard_deduction(inp.year, inp.filing_status, inp.irs_data_version)
-    total_taxable_income = positive(agi - standard_deduction)
-    ordinary_taxable = positive(ordinary_income - standard_deduction)
+    # Take the larger of the standard deduction and the taxpayer's itemized deductions.
+    deduction = max(standard_deduction, inp.itemized_deductions)
+    total_taxable_income = positive(agi - deduction)
+    ordinary_taxable = positive(ordinary_income - deduction)
     ltcg_taxable = min(inp.ltcg, positive(total_taxable_income - ordinary_taxable))
     total_federal, ordinary_tax, ltcg_tax = federal_tax(
         ordinary_taxable,
@@ -287,7 +291,7 @@ def compute_taxes(inp: TaxInput) -> TaxResult:
     )
     state_tax = state_tax_ma(
         TaxableIncomeMA(
-            wages=inp.wages,
+            wages=inp.wages if inp.wages_state is None else inp.wages_state,
             pensions_taxable_state=inp.pensions_taxable_state,
             traditional_distributions=inp.traditional_distributions,
             roth_conversions=inp.roth_conversions,

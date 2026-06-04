@@ -1,0 +1,204 @@
+# Boldin Feature-Parity Gap Audit
+
+Living checklist auditing this Personal Retirement Planner against **Boldin** (formerly
+NewRetirement). Goal: close all *relevant* gaps with identical/similar usage. Single-user
+personal use is assumed, so inherently multi-user / external-service / hosted-only features
+are **out of scope** (see bottom).
+
+Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (single-user/local)
+
+---
+
+## 1. Profile / Household
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Single or couple, per-person ages | ✓ | ✓ | ✅ |
+| Life expectancy / longevity per person | ✓ | ✓ | ✅ |
+| Retirement age/date per person | ✓ | ✓ | ✅ |
+| Filing status, state of residence | ✓ | ✓ | ✅ |
+| Death-of-spouse transition (filing→single, SS survivor) | ✓ | ✓ | ✅ |
+
+## 2. Income
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Salary, part-time, bonus | ✓ | ✓ (salary) | ✅ |
+| Pension w/ COLA + survivor option | ✓ | ✓ | ✅ |
+| Social Security w/ claiming age | ✓ | ✓ | ✅ |
+| SS spousal + survivor benefit | ✓ | ✓ (survivor) | ✅ |
+| Annuity (incl. deferred/future-purchase) | ✓ | ✓ (future-dated stream + calculator) | ✅ |
+| Rental / passive income | ✓ | ✓ (passive) | ✅ |
+| Windfall / one-time income | ✓ | ✓ | ✅ |
+
+## 3. Expenses
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Categorized budget | ✓ | ✓ (named streams as categories) | ✅ |
+| Must-have vs nice-to-have | ✓ | ✓ (must/discretionary) | ✅ |
+| Healthcare w/ separate inflation | ✓ | ✓ | ✅ |
+| One-time / planned expenses | ✓ | ✓ (one_time) | ✅ |
+| Spending phases / "smile" | ✓ | ✓ (phase-dated streams) | ✅ |
+| Long-term care modeling | ✓ | ✓ (LTC expense kind) | ✅ |
+
+## 4. Accounts / Assets
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Cash, brokerage, Trad/Roth IRA/401k/403b, HSA, 457b | ✓ | ✓ | ✅ |
+| Real estate / primary home | ✓ | ✓ (appr. + sale) | ✅ |
+| **Contributions + employer match** | ✓ | ✓ | ✅ |
+| Per-account rate of return | ✓ | ✓ | ✅ |
+| Account exclusion from auto-withdrawal/RMD/conv | ✓ | ✓ (withdrawals + RMDs) | ✅ |
+| Home sale / downsize event | ✓ | ✓ | ✅ |
+| 529, deferred comp, life insurance (extra types) | ✓ | ✓ | ✅ |
+
+## 5. Debt
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Mortgage / loan w/ amortization + payoff | ✓ | ✓ (payment + interest + payoff) | ✅ |
+| Reverse mortgage / HELOC | ✓ | ✓ (model as debt account + money flow) | ✅ |
+
+## 6. Withdrawal Strategy
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Customizable drawdown order | ✓ | ✓ | ✅ |
+| Roth 3-layer + HSA rules | ✓ | ✓ | ✅ |
+| RMDs | ✓ | ✓ | ✅ |
+| Rate-of-return-ordered depletion within bucket | ✓ | ✓ | ✅ |
+| Manual scheduled transfers ("Money Flows") | ✓ | ✓ | ✅ |
+
+## 7. Roth Conversion Explorer
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Manual conversion schedule | ✓ | ✓ | ✅ |
+| Bracket-fill optimizer | ✓ | ✓ | ✅ |
+| IRMAA-limit optimizer | ✓ | ✓ | ✅ |
+| Lowest-lifetime-tax / highest-estate optimizer | ✓ | ✓ (goal search over brackets) | ✅ |
+
+## 8. Tax Planning
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Federal + state, year-by-year | ✓ | ✓ (MA) | ✅ |
+| LTCG stacking | ✓ | ✓ | ✅ |
+| SS taxation | ✓ | ✓ | ✅ |
+| Standard vs itemized optimization | ✓ | ✓ (max of the two) | ✅ |
+| Lifetime tax total | ✓ | ✓ | ✅ |
+| IRMAA (Part B/D) | ✓ | ✓ | ✅ |
+| Tax-bracket-fill visualization | ✓ | ✓ | ✅ |
+
+## 9. Social Security Explorer
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Claiming-age comparison / break-even | ✓ | ✓ | ✅ |
+| Spousal / survivor modeling | ✓ | ✓ (survivor benefit + death) | ✅ |
+
+## 10. Medicare / Healthcare
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Medicare cost estimate (Part B/D, health tiers) | ✓ | ✓ (estimator) | ✅ |
+| IRMAA surcharges | ✓ | ✓ | ✅ |
+| Pre-65 ACA as expense | ✓ | ✓ (ACA estimator) | ✅ |
+
+## 11. Monte Carlo / Chance of Success
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Monte Carlo simulation | ✓ | ✓ (500 trials, per-year returns) | ✅ |
+| Chance-of-success % (never-negative) | ✓ | ✓ | ✅ |
+| Optimistic/Average/Pessimistic assumption sets | ✓ | ✓ (deterministic variants) | ✅ |
+
+## 12. Projections / Metrics
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Net worth over time | ✓ | ✓ | ✅ |
+| Cash flow | ✓ | ✓ | ✅ |
+| Out-of-money / out-of-savings age | ✓ | ✓ | ✅ |
+| Estate value at longevity | ✓ | ✓ | ✅ |
+| Sankey cash-flow chart | ✓ | ✓ | ✅ |
+
+## 13. Insights / Coach
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Financial Wellness Score | ✓ | ✓ | ✅ |
+| Coach alerts / suggestions | ✓ | ✓ (rule-based insights) | ✅ |
+| AI chat assistant | ✓ | ⛔ | ⛔ (external LLM; SPEC non-goal — Insights/Coach covers the actionable-advice value locally) |
+
+## 14. Scenarios / What-if
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Clone + compare scenarios | ✓ | ✓ | ✅ |
+| Compare optimistic/avg/pess side by side | ✓ | ✓ | ✅ |
+
+## 15. Inflation Assumptions
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| General + medical + SS COLA + housing | ✓ | ✓ | ✅ |
+
+## 16. Reports / Charts / Export
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| CSV export | ✓ | ✓ | ✅ |
+| 25+ charts | ✓ | ✓ (8 + score/SS charts) | ✅ |
+| Printable PDF report | ✓ | ✓ (print/save PDF) | ✅ |
+
+## 17. Annuity tools
+| Feature | Boldin | This app | Status |
+|---|---|---|---|
+| Lifetime annuity calculator | ✓ | ✓ | ✅ |
+
+---
+
+## Out of scope (single-user / local-first / external service)
+- Account aggregation / bank linking (explicit non-goal; external service)
+- AI chat assistant, human CFP coaching, community/classes
+- Mobile app, hosted multi-user, tiered paywall
+- Real-time market sync
+
+---
+
+## Wave plan
+- **Wave 1** — Accumulation economics: contributions + employer match; debt/mortgage
+  amortization; home-sale events; lifetime-tax, out-of-money age, estate metrics. _(in progress)_
+- **Wave 2** — Assumption sets (optimistic/avg/pessimistic) + Monte Carlo + chance of success.
+- **Wave 3** — IRMAA + Medicare cost estimator + itemized deductions + ACA; tax charts.
+- **Wave 4** — Social Security Explorer; Roth Conversion Explorer (bracket/IRMAA/lifetime).
+- **Wave 5** — Insights/Wellness score; Money Flows; account exclusion; spending phases;
+  extra account types; survivor modeling; more charts; PDF report.
+
+## Audit log
+- Round 0 (baseline): 279 tests passing. Gaps enumerated above.
+- Wave 1a: Contributions + employer match (engine + API + UI + migration + tests).
+  Pre-tax (401k/403b/457b/trad-IRA/HSA) reduce federal wages; employer-plan deferrals also reduce
+  MA wages; Roth adds to contributions basis. Capped at available income so it never forces a
+  withdrawal. Fixed latent bugs: CI was red (pre-existing mypy + ruff failures) — now green.
+  Fixed crash: uniform lifetime RMD table only reached age 80; extended to official age 120 so
+  realistic life expectancies (default 95) no longer crash. 286 tests passing.
+- Waves 2-5 delivered (each engine + API + UI + tests, CI green throughout): Monte Carlo +
+  chance-of-success + optimistic/avg/pessimistic variants; IRMAA; itemized deductions; Medicare +
+  pre-65 ACA estimators; Social Security claiming-age explorer; Roth Conversion Explorer
+  (bracket / IRMAA / goal-based highest-estate & lowest-lifetime-tax); Financial Wellness Score +
+  Coach insights; debt amortization; home sale; contributions + employer match; extra account
+  types (529 / deferred comp / life insurance); rate-of-return-ordered drawdown; account exclusion;
+  housing appreciation; annuity calculator; survivor / death-of-spouse modeling + couples (people
+  CRUD); Money Flows; lifetime-tax / out-of-savings / estate metrics; Sankey + tax-bracket-fill +
+  IRMAA charts; print/PDF; lifetime annuity calculator.
+
+### Final status
+All relevant Boldin features are ✅ except the **AI chat assistant**, which is ⛔ out of scope:
+it requires an external LLM service (incompatible with a local-first, single-user, deterministic
+engine) and is an explicit SPEC non-goal — the local **Insights & Coach** feature delivers the
+actionable-advice value instead.
+
+### Audit Round 1 — clean
+- Gaps: none remaining (AI chat ⛔ by design, rationale above).
+- Bugs: none found. Verified via: full suite **337 passed**; `ruff` clean; `mypy --strict` clean;
+  engine float-scan clean; web `tsc` clean. End-to-end API smoke test of a couples scenario
+  exercising every new endpoint (projection variants, monte-carlo, insights,
+  assumption-comparison, SS explorer, all Roth-explorer strategies, calculators, money-flows,
+  people) all returned 200. Determinism (byte-identical re-run) and per-account conservation
+  (`ending = beginning + contributions − distributions + return`) verified on a complex scenario
+  (survivor + money flow + RMDs + Roth). Manual review confirmed `_clone_account` copies every
+  field and all new projection columns persist.
+
+### Audit Round 2 — clean
+- Gaps: none remaining (unchanged from Round 1).
+- Bugs: none found. Re-ran full suite + property-based tests (Hypothesis, default profile) +
+  all static gates green; fresh end-to-end smoke test green. No regressions across two consecutive
+  rounds.

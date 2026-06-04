@@ -5,7 +5,13 @@ import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { apiRequest, formatMoney, type ExpenseStream } from "../../../lib/api";
 
-const EXPENSE_KINDS = ["must_spend", "discretionary", "healthcare", "one_time"] as const;
+const EXPENSE_KINDS = [
+  "must_spend",
+  "discretionary",
+  "healthcare",
+  "long_term_care",
+  "one_time"
+] as const;
 const INFLATION_KINDS = ["cpi", "healthcare", "none", "custom"] as const;
 
 export default function ExpensesPage() {
@@ -60,6 +66,48 @@ export default function ExpensesPage() {
       setError(err instanceof Error ? err.message : "Unable to save");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function addMedicareEstimate(health: string) {
+    setError(null);
+    try {
+      const est = await apiRequest<{ annual_per_person: string }>(
+        `/calculators/medicare?health=${health}`
+      );
+      await apiRequest<ExpenseStream>(`/scenarios/${params.id}/expense-streams`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: `Medicare (${health}, est.)`,
+          kind: "healthcare",
+          annual_amount: est.annual_per_person,
+          start_year: new Date().getFullYear(),
+          inflation_kind: "healthcare"
+        })
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to add estimate");
+    }
+  }
+
+  async function addAcaEstimate() {
+    setError(null);
+    try {
+      const est = await apiRequest<{ annual_per_person: string }>(`/calculators/aca?age=60`);
+      await apiRequest<ExpenseStream>(`/scenarios/${params.id}/expense-streams`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Pre-65 ACA (est.)",
+          kind: "healthcare",
+          annual_amount: est.annual_per_person,
+          start_year: new Date().getFullYear(),
+          inflation_kind: "healthcare"
+        })
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to add estimate");
     }
   }
 
@@ -205,6 +253,37 @@ export default function ExpensesPage() {
               {isSaving ? "Saving..." : "Add expense"}
             </button>
           </form>
+
+          <div className="flex flex-col gap-3 rounded-md border border-stone-300 bg-white p-5">
+            <h2 className="text-base font-semibold text-stone-950">Medicare cost estimator</h2>
+            <p className="text-sm text-stone-500">
+              Add an estimated annual Medicare healthcare cost (premiums + supplement) by health
+              status. IRMAA surcharges are added automatically based on income.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {["excellent", "good", "poor"].map((h) => (
+                <button
+                  className="h-9 rounded-md border border-stone-300 px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                  key={h}
+                  onClick={() => {
+                    void addMedicareEstimate(h);
+                  }}
+                  type="button"
+                >
+                  Add {h}
+                </button>
+              ))}
+              <button
+                className="h-9 rounded-md border border-stone-300 px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                onClick={() => {
+                  void addAcaEstimate();
+                }}
+                type="button"
+              >
+                Add pre-65 ACA
+              </button>
+            </div>
+          </div>
         </aside>
 
         <section className="rounded-md border border-stone-300 bg-white">

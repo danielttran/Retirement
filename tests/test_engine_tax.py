@@ -314,11 +314,15 @@ def test_ordinary_income_zero_when_only_ss() -> None:
 
 def test_compute_provisional_income_adds_half_ss() -> None:
     # 30000 ordinary + 5000 ltcg + 20000/2 SS = 45000
-    assert compute_provisional_income(Decimal("30000"), Decimal("5000"), Decimal("20000")) == Decimal("45000")
+    assert compute_provisional_income(
+        Decimal("30000"), Decimal("5000"), Decimal("20000")
+    ) == Decimal("45000")
 
 
 def test_compute_provisional_income_zero_ss() -> None:
-    assert compute_provisional_income(Decimal("50000"), Decimal("0"), Decimal("0")) == Decimal("50000")
+    assert compute_provisional_income(
+        Decimal("50000"), Decimal("0"), Decimal("0")
+    ) == Decimal("50000")
 
 
 # ---------------------------------------------------------------------------
@@ -342,3 +346,22 @@ def test_apply_ltcg_brackets_stacked_fully_in_fifteen_percent() -> None:
 def test_apply_ltcg_brackets_stacked_no_ltcg_returns_zero() -> None:
     tax = apply_ltcg_brackets_stacked(Decimal("50000"), Decimal("0"), 2024, "single", "2024-33")
     assert tax == Decimal("0.00")
+
+
+def test_itemized_deduction_used_when_larger() -> None:
+    from planner_engine.tax import TaxInput, compute_taxes
+
+    base = TaxInput(
+        year=2024, filing_status="single", state="MA", ages={"p1": 50},
+        wages=Decimal("100000"),
+    )
+    std = compute_taxes(base)
+    itemized = compute_taxes(
+        TaxInput(
+            year=2024, filing_status="single", state="MA", ages={"p1": 50},
+            wages=Decimal("100000"), itemized_deductions=Decimal("40000"),
+        )
+    )
+    # A 40k itemized deduction exceeds the ~14.6k standard → lower taxable income, lower tax.
+    assert itemized.federal_tax < std.federal_tax
+    assert itemized.ordinary_taxable < std.ordinary_taxable

@@ -18,10 +18,17 @@ AccountType = Literal[
     "governmental_457b",
     "real_estate",
     "debt",
+    "529",
+    "deferred_comp",
+    "life_insurance",
 ]
-IncomeKind = Literal["salary", "pension", "social_security", "annuity", "passive", "other"]
+IncomeKind = Literal[
+    "salary", "pension", "social_security", "annuity", "passive", "windfall", "other"
+]
 IncomeInflationKind = Literal["cpi", "ss_cola", "pension_cola", "none", "custom"]
-ExpenseKind = Literal["must_spend", "discretionary", "healthcare", "one_time"]
+ExpenseKind = Literal[
+    "must_spend", "discretionary", "healthcare", "long_term_care", "one_time"
+]
 ExpenseInflationKind = Literal["cpi", "healthcare", "none", "custom"]
 SeppMethod = Literal["rmd", "fixed_amortization", "fixed_annuitization"]
 SeppStatus = Literal["planned", "active", "completed", "modified", "cancelled"]
@@ -37,6 +44,7 @@ class PersonCreate(BaseModel):
     dob: str
     retirement_date: str | None = None
     life_expectancy_age: int = Field(default=95, ge=1, le=130)
+    death_age: int | None = Field(default=None, ge=1, le=130)
 
 
 class PersonRead(PersonCreate, ApiModel):
@@ -75,6 +83,10 @@ class AccountCreate(BaseModel):
     has_rollover_basis_from_penalty_account: bool = False
     rollover_basis_pct: Decimal | None = None
     hsa_qualified_medical_expense_pct: Decimal | None = None
+    debt_annual_payment: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    exclude_from_withdrawals: bool = False
+    sale_year: int | None = None
+    selling_cost_pct: Decimal = Field(default=Decimal("0.06"), ge=Decimal("0"))
 
 
 class AccountRead(AccountCreate, ApiModel):
@@ -113,6 +125,7 @@ class IncomeStreamRead(ApiModel):
     is_taxable_federal: bool
     is_taxable_state: bool
     claiming_age: int | None
+    survivor_pct: Decimal = Decimal("0")
 
 
 class IncomeStreamCreate(BaseModel):
@@ -127,6 +140,7 @@ class IncomeStreamCreate(BaseModel):
     is_taxable_federal: bool = True
     is_taxable_state: bool = True
     claiming_age: int | None = None
+    survivor_pct: Decimal = Field(default=Decimal("0"), ge=Decimal("0"), le=Decimal("1"))
 
 
 class ExpenseStreamRead(ApiModel):
@@ -166,7 +180,9 @@ class AssumptionSetRead(ApiModel):
     healthcare_inflation_rate: Decimal
     ss_cola_rate: Decimal
     pension_cola_rate: Decimal
+    housing_appreciation_rate: Decimal
     bracket_indexing_rate: Decimal
+    itemized_deductions: Decimal
     cash_reserve_target_months: int
     irs_data_version: str
     engine_version: str
@@ -180,7 +196,9 @@ class AssumptionSetUpdate(BaseModel):
     healthcare_inflation_rate: Decimal = Decimal("0.04")
     ss_cola_rate: Decimal = Decimal("0.025")
     pension_cola_rate: Decimal = Decimal("0")
+    housing_appreciation_rate: Decimal = Decimal("0.04")
     bracket_indexing_rate: Decimal = Decimal("0.025")
+    itemized_deductions: Decimal = Decimal("0")
     cash_reserve_target_months: int = 24
     irs_data_version: str = "2024-33"
     engine_version: str = "0.1.0"
@@ -269,6 +287,49 @@ class RothConversionPlanCreate(BaseModel):
     tax_payment_source_account_id: str | None = None
 
 
+ContributionInflationKind = Literal["cpi", "none", "custom"]
+
+
+class ContributionCreate(BaseModel):
+    account_id: str
+    annual_amount: Decimal = Field(ge=Decimal("0"))
+    start_year: int
+    end_year: int | None = None
+    inflation_kind: ContributionInflationKind = "cpi"
+    custom_inflation_rate: Decimal | None = None
+    employer_match_amount: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+
+
+class ContributionRead(ApiModel):
+    id: str
+    scenario_id: str
+    account_id: str
+    annual_amount: Decimal
+    start_year: int
+    end_year: int | None
+    inflation_kind: str
+    custom_inflation_rate: Decimal | None
+    employer_match_amount: Decimal
+
+
+class MoneyFlowCreate(BaseModel):
+    from_account_id: str
+    to_account_id: str
+    year: int
+    amount: Decimal = Field(ge=Decimal("0"))
+    notes: str | None = None
+
+
+class MoneyFlowRead(ApiModel):
+    id: str
+    scenario_id: str
+    from_account_id: str
+    to_account_id: str
+    year: int
+    amount: Decimal
+    notes: str | None
+
+
 class ProjectionRunMetadataRead(ApiModel):
     id: str
     scenario_id: str
@@ -296,6 +357,8 @@ class ProjectionYearRead(ApiModel):
     magi: Decimal
     provisional_income: Decimal
     ss_taxable_portion: Decimal
+    ordinary_taxable_income: Decimal = Decimal("0")
+    medicare_irmaa: Decimal = Decimal("0")
     surplus: Decimal
     ending_net_worth: Decimal
 
@@ -321,11 +384,124 @@ class ProjectionWarningRead(ApiModel):
     message: str
 
 
+class ProjectionSummaryRead(BaseModel):
+    final_year: int
+    final_age: int
+    estate_net_worth: Decimal
+    peak_net_worth: Decimal
+    peak_net_worth_year: int
+    lifetime_federal_tax: Decimal
+    lifetime_state_tax: Decimal
+    lifetime_penalties: Decimal
+    lifetime_total_tax: Decimal
+    total_lifetime_income: Decimal
+    total_lifetime_expenses: Decimal
+    total_lifetime_roth_conversions: Decimal
+    total_lifetime_irmaa: Decimal = Decimal("0")
+    out_of_savings_year: int | None
+    out_of_savings_age: int | None
+
+
 class ProjectionRead(ApiModel):
     metadata: ProjectionRunMetadataRead
     years: list[ProjectionYearRead]
     account_balances: list[ProjectionAccountBalanceRead]
     warnings: list[ProjectionWarningRead]
+    summary: ProjectionSummaryRead | None = None
+
+
+class ClaimingOptionRead(BaseModel):
+    claiming_age: int
+    monthly_benefit: Decimal
+    annual_benefit: Decimal
+    lifetime_total: Decimal
+    break_even_age_vs_earliest: int | None
+
+
+class SocialSecurityExplorerRead(BaseModel):
+    person_id: str
+    person_name: str
+    pia_annual: Decimal
+    full_retirement_age_months: int
+    current_claiming_age: int | None
+    options: list[ClaimingOptionRead]
+    max_lifetime_claiming_age: int
+
+
+class ConversionSuggestionRead(BaseModel):
+    year: int
+    amount: Decimal
+    ordinary_taxable_income: Decimal
+    magi: Decimal
+    headroom: Decimal
+    traditional_balance: Decimal
+
+
+class RothExplorerRead(BaseModel):
+    strategy: str
+    source_account_id: str | None
+    destination_account_id: str | None
+    suggestions: list[ConversionSuggestionRead]
+    total_converted: Decimal
+    baseline_lifetime_tax: Decimal
+    projected_lifetime_tax: Decimal
+    baseline_estate: Decimal
+    projected_estate: Decimal
+    note: str | None = None
+
+
+class ScoreComponentRead(BaseModel):
+    label: str
+    score: int
+    weight: int
+    detail: str
+
+
+class AlertRead(BaseModel):
+    severity: str
+    title: str
+    message: str
+
+
+class InsightsRead(BaseModel):
+    score: int
+    rating: str
+    components: list[ScoreComponentRead]
+    alerts: list[AlertRead]
+
+
+class AnnuityEstimateRead(BaseModel):
+    premium: Decimal
+    age: int
+    payout_rate: Decimal
+    annual_income: Decimal
+
+
+class MedicareEstimateRead(BaseModel):
+    health: str
+    annual_per_person: Decimal
+    include_dental_vision: bool
+
+
+class AcaEstimateRead(BaseModel):
+    age: int
+    annual_per_person: Decimal
+
+
+class AssumptionComparisonRead(BaseModel):
+    average: ProjectionSummaryRead
+    optimistic: ProjectionSummaryRead
+    pessimistic: ProjectionSummaryRead
+
+
+class MonteCarloRead(BaseModel):
+    trials: int
+    success_count: int
+    chance_of_success: Decimal
+    p10_estate: Decimal
+    p50_estate: Decimal
+    p90_estate: Decimal
+    median_out_of_savings_age: int | None
 
 
 class ScenarioDetail(ScenarioRead):

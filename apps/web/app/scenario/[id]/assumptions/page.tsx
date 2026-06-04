@@ -31,7 +31,9 @@ export default function AssumptionsPage() {
       healthcare_inflation_rate: String(Number(form.get("healthcareRate") ?? 0) / 100),
       ss_cola_rate: String(Number(form.get("ssCola") ?? 0) / 100),
       pension_cola_rate: String(Number(form.get("pensionCola") ?? 0) / 100),
+      housing_appreciation_rate: String(Number(form.get("housingRate") ?? 0) / 100),
       bracket_indexing_rate: String(Number(form.get("bracketIndexing") ?? 0) / 100),
+      itemized_deductions: String(form.get("itemizedDeductions") ?? "0"),
       cash_reserve_target_months: Number(form.get("cashReserveMonths")),
       irs_data_version: String(form.get("irsDataVersion")),
       engine_version: assumptions?.engine_version ?? "0.1.0",
@@ -99,6 +101,11 @@ export default function AssumptionsPage() {
                 default: pct(assumptions.pension_cola_rate)
               },
               {
+                label: "Housing appreciation",
+                name: "housingRate",
+                default: pct(assumptions.housing_appreciation_rate)
+              },
+              {
                 label: "Bracket indexing",
                 name: "bracketIndexing",
                 default: pct(assumptions.bracket_indexing_rate)
@@ -116,6 +123,23 @@ export default function AssumptionsPage() {
                 />
               </label>
             ))}
+          </fieldset>
+
+          <hr className="border-stone-200" />
+
+          <fieldset className="flex flex-col gap-4">
+            <legend className="text-base font-semibold text-stone-950">Deductions</legend>
+            <label className="flex items-center justify-between gap-4 text-sm font-medium text-stone-800">
+              Itemized deductions ($/yr, 0 = use standard)
+              <input
+                className="h-9 w-32 rounded-md border border-stone-300 px-3 text-right"
+                defaultValue={assumptions.itemized_deductions}
+                min="0"
+                name="itemizedDeductions"
+                step="1"
+                type="number"
+              />
+            </label>
           </fieldset>
 
           <hr className="border-stone-200" />

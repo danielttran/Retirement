@@ -3,17 +3,22 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from planner_engine.annuity import estimate_lifetime_annuity_income
 from planner_engine.common import AccountYearState, RothConversionLotState
 from planner_engine.common import Person as EnginePerson
 from planner_engine.projection import (
     AssumptionSet as EngineAssumptionSet,
+)
+from planner_engine.projection import (
+    ContributionPlan as EngineContributionPlan,
 )
 from planner_engine.projection import (
     ExpenseStream as EngineExpenseStream,
@@ -22,24 +27,37 @@ from planner_engine.projection import (
     IncomeStream as EngineIncomeStream,
 )
 from planner_engine.projection import (
+    MoneyFlowPlan as EngineMoneyFlowPlan,
+)
+from planner_engine.projection import (
     ScenarioInput,
     SeppProjectionPlan,
+    compute_summary,
     run_projection,
 )
 from planner_engine.roth import RothConversionPlan as EngineRothConversionPlan
 from planner_engine.sepp.calculator import SeppCalculationInput
 from planner_engine.sepp.calculator import calculate_initial_payment as _compute_sepp_payment
+from planner_engine.socialsecurity import (
+    explore_claiming_ages,
+    full_retirement_age_months,
+    pia_from_benefit,
+)
+from planner_engine.tax import estimate_aca_annual, estimate_medicare_annual
 from planner_engine.withdrawal import DEFAULT_WITHDRAWAL_ORDER
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import DATABASE_PATH, get_session, init_db
+from app.insights import compute_insights
 from app.models import (
     Account,
     AssumptionSet,
+    Contribution,
     ExpenseStream,
     Household,
     IncomeStream,
+    MoneyFlow,
     Person,
     ProjectionAccountBalance,
     ProjectionRunMetadata,
@@ -51,28 +69,49 @@ from app.models import (
     SeppPlan,
     WithdrawalStrategy,
 )
+from app.montecarlo import run_monte_carlo
+from app.roth_explorer import ConversionSuggestion, suggest_roth_conversions
 from app.schemas import (
+    AcaEstimateRead,
     AccountCreate,
     AccountRead,
+    AlertRead,
+    AnnuityEstimateRead,
+    AssumptionComparisonRead,
     AssumptionSetRead,
     AssumptionSetUpdate,
+    ClaimingOptionRead,
+    ContributionCreate,
+    ContributionRead,
+    ConversionSuggestionRead,
     ExpenseStreamCreate,
     ExpenseStreamRead,
     HouseholdCreate,
     HouseholdRead,
     IncomeStreamCreate,
     IncomeStreamRead,
+    InsightsRead,
+    MedicareEstimateRead,
+    MoneyFlowCreate,
+    MoneyFlowRead,
+    MonteCarloRead,
+    PersonCreate,
     ProjectionAccountBalanceRead,
     ProjectionRead,
     ProjectionRunMetadataRead,
+    ProjectionSummaryRead,
     ProjectionWarningRead,
     ProjectionYearRead,
     RothConversionPlanCreate,
     RothConversionPlanRead,
+    RothExplorerRead,
     ScenarioDetail,
     ScenarioRead,
+    ScoreComponentRead,
+    SeppMethod,
     SeppPlanCreate,
     SeppPlanRead,
+    SocialSecurityExplorerRead,
     WithdrawalStrategyRead,
     WithdrawalStrategyUpdate,
 )
@@ -116,6 +155,35 @@ app.add_middleware(
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/calculators/annuity", response_model=AnnuityEstimateRead, tags=["calculators"])
+def annuity_estimate(premium: Decimal, age: int) -> AnnuityEstimateRead:
+    from planner_engine.annuity import payout_rate
+
+    return AnnuityEstimateRead(
+        premium=premium,
+        age=age,
+        payout_rate=payout_rate(age),
+        annual_income=estimate_lifetime_annuity_income(premium, age),
+    )
+
+
+@app.get("/calculators/aca", response_model=AcaEstimateRead, tags=["calculators"])
+def aca_estimate(age: int) -> AcaEstimateRead:
+    return AcaEstimateRead(age=age, annual_per_person=estimate_aca_annual(age))
+
+
+@app.get("/calculators/medicare", response_model=MedicareEstimateRead, tags=["calculators"])
+def medicare_estimate(
+    health: str = "good",
+    include_dental_vision: bool = True,
+) -> MedicareEstimateRead:
+    return MedicareEstimateRead(
+        health=health,
+        annual_per_person=estimate_medicare_annual(health, include_dental_vision),
+        include_dental_vision=include_dental_vision,
+    )
 
 
 @app.get("/system/database", tags=["system"])
@@ -192,6 +260,50 @@ def delete_household(household_id: str, session: SessionDep) -> Response:
     for sid in scenario_ids:
         clear_projection_output(sid, session)
     session.delete(household)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(
+    "/households/{household_id}/people",
+    response_model=HouseholdRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["households"],
+)
+def add_person(household_id: str, payload: PersonCreate, session: SessionDep) -> Household:
+    household = session.get(Household, household_id)
+    if household is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Household not found")
+    person = Person(
+        id=new_id(),
+        household_id=household_id,
+        name=payload.name,
+        dob=payload.dob,
+        retirement_date=payload.retirement_date,
+        life_expectancy_age=payload.life_expectancy_age,
+        death_age=payload.death_age,
+        is_primary=False,
+    )
+    session.add(person)
+    session.commit()
+    session.refresh(household)
+    return household
+
+
+@app.delete(
+    "/households/{household_id}/people/{person_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["households"],
+)
+def delete_person(household_id: str, person_id: str, session: SessionDep) -> Response:
+    person = session.get(Person, person_id)
+    if person is None or person.household_id != household_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
+    if person.is_primary:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete the primary person"
+        )
+    session.delete(person)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -710,15 +822,141 @@ def delete_roth_conversion(scenario_id: str, plan_id: str, session: SessionDep) 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@app.get(
+    "/scenarios/{scenario_id}/contributions",
+    response_model=list[ContributionRead],
+    tags=["contributions"],
+)
+def list_contributions(scenario_id: str, session: SessionDep) -> list[Contribution]:
+    require_scenario(scenario_id, session)
+    return list(
+        session.scalars(
+            select(Contribution).where(Contribution.scenario_id == scenario_id)
+        ).all()
+    )
+
+
+@app.post(
+    "/scenarios/{scenario_id}/contributions",
+    response_model=ContributionRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["contributions"],
+)
+def create_contribution(
+    scenario_id: str,
+    payload: ContributionCreate,
+    session: SessionDep,
+) -> Contribution:
+    scenario = require_scenario(scenario_id, session)
+    require_household_account(payload.account_id, scenario.household_id, session)
+    contribution = Contribution(id=new_id(), scenario_id=scenario.id, **payload.model_dump())
+    session.add(contribution)
+    session.commit()
+    session.refresh(contribution)
+    return contribution
+
+
+@app.put(
+    "/scenarios/{scenario_id}/contributions/{contribution_id}",
+    response_model=ContributionRead,
+    tags=["contributions"],
+)
+def update_contribution(
+    scenario_id: str,
+    contribution_id: str,
+    payload: ContributionCreate,
+    session: SessionDep,
+) -> Contribution:
+    scenario = require_scenario(scenario_id, session)
+    require_household_account(payload.account_id, scenario.household_id, session)
+    contribution = session.get(Contribution, contribution_id)
+    if contribution is None or contribution.scenario_id != scenario_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contribution not found")
+    for key, value in payload.model_dump().items():
+        setattr(contribution, key, value)
+    session.commit()
+    session.refresh(contribution)
+    return contribution
+
+
+@app.delete(
+    "/scenarios/{scenario_id}/contributions/{contribution_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["contributions"],
+)
+def delete_contribution(
+    scenario_id: str, contribution_id: str, session: SessionDep
+) -> Response:
+    require_scenario(scenario_id, session)
+    contribution = session.get(Contribution, contribution_id)
+    if contribution is None or contribution.scenario_id != scenario_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contribution not found")
+    session.delete(contribution)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get(
+    "/scenarios/{scenario_id}/money-flows",
+    response_model=list[MoneyFlowRead],
+    tags=["money-flows"],
+)
+def list_money_flows(scenario_id: str, session: SessionDep) -> list[MoneyFlow]:
+    require_scenario(scenario_id, session)
+    return list(
+        session.scalars(select(MoneyFlow).where(MoneyFlow.scenario_id == scenario_id)).all()
+    )
+
+
+@app.post(
+    "/scenarios/{scenario_id}/money-flows",
+    response_model=MoneyFlowRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["money-flows"],
+)
+def create_money_flow(
+    scenario_id: str, payload: MoneyFlowCreate, session: SessionDep
+) -> MoneyFlow:
+    scenario = require_scenario(scenario_id, session)
+    require_household_account(payload.from_account_id, scenario.household_id, session)
+    require_household_account(payload.to_account_id, scenario.household_id, session)
+    flow = MoneyFlow(id=new_id(), scenario_id=scenario.id, **payload.model_dump())
+    session.add(flow)
+    session.commit()
+    session.refresh(flow)
+    return flow
+
+
+@app.delete(
+    "/scenarios/{scenario_id}/money-flows/{flow_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["money-flows"],
+)
+def delete_money_flow(scenario_id: str, flow_id: str, session: SessionDep) -> Response:
+    require_scenario(scenario_id, session)
+    flow = session.get(MoneyFlow, flow_id)
+    if flow is None or flow.scenario_id != scenario_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Money flow not found")
+    session.delete(flow)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post(
     "/scenarios/{scenario_id}/run-projection",
     response_model=ProjectionRead,
     tags=["projection"],
 )
-def run_scenario_projection(scenario_id: str, session: SessionDep) -> ProjectionRead:
+def run_scenario_projection(
+    scenario_id: str,
+    session: SessionDep,
+    variant: str = "average",
+) -> ProjectionRead:
     scenario = load_scenario_for_projection(scenario_id, session)
     assumptions = get_or_create_assumptions(scenario, session)
-    projection_input = build_projection_input(scenario, assumptions, session)
+    projection_input = apply_rate_variant(
+        build_projection_input(scenario, assumptions, session), variant
+    )
     run = run_projection(projection_input, assumptions.irs_data_version, assumptions.engine_version)
 
     clear_projection_output(scenario.id, session)
@@ -750,6 +988,8 @@ def run_scenario_projection(scenario_id: str, session: SessionDep) -> Projection
             magi=row.magi,
             provisional_income=row.provisional_income,
             ss_taxable_portion=row.ss_taxable_portion,
+            ordinary_taxable_income=row.ordinary_taxable_income,
+            medicare_irmaa=row.medicare_irmaa,
             surplus=row.surplus,
             ending_net_worth=row.ending_net_worth,
         )
@@ -782,6 +1022,232 @@ def run_scenario_projection(scenario_id: str, session: SessionDep) -> Projection
     )
     session.commit()
     return get_projection(scenario_id, session)
+
+
+@app.post(
+    "/scenarios/{scenario_id}/monte-carlo",
+    response_model=MonteCarloRead,
+    tags=["projection"],
+)
+def run_scenario_monte_carlo(
+    scenario_id: str,
+    session: SessionDep,
+    trials: int = 500,
+) -> MonteCarloRead:
+    trials = max(50, min(2000, trials))
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    projection_input = build_projection_input(scenario, assumptions, session)
+    result = run_monte_carlo(
+        projection_input,
+        assumptions.irs_data_version,
+        assumptions.engine_version,
+        trials=trials,
+        seed=12345,
+    )
+    return MonteCarloRead(**result.__dict__)
+
+
+@app.post(
+    "/scenarios/{scenario_id}/roth-explorer",
+    response_model=RothExplorerRead,
+    tags=["roth"],
+)
+def run_roth_explorer(
+    scenario_id: str,
+    session: SessionDep,
+    strategy: str = "bracket",
+    target_rate: Decimal = Decimal("0.24"),
+    irmaa_magi_ceiling: Decimal = Decimal("206000"),
+    start_year: int | None = None,
+    end_year: int | None = None,
+    apply: bool = False,
+) -> RothExplorerRead:
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    projection_input = build_projection_input(scenario, assumptions, session)
+    window_start = start_year if start_year is not None else projection_input.start_year
+    # Default to the year before the primary reaches RMD age 73; conversions before RMDs help most.
+    primary = next((p for p in scenario.household.people if p.is_primary), None)
+    default_end = projection_input.end_year
+    if primary is not None:
+        default_end = min(default_end, parse_year(primary.dob) + 72)
+    window_end = end_year if end_year is not None else max(window_start, default_end)
+
+    result = suggest_roth_conversions(
+        projection_input,
+        assumptions.irs_data_version,
+        assumptions.engine_version,
+        strategy=strategy,
+        target_rate=target_rate,
+        irmaa_magi_ceiling=irmaa_magi_ceiling,
+        start_year=window_start,
+        end_year=window_end,
+    )
+
+    if apply and result.source_account_id and result.destination_account_id:
+        for suggestion in result.suggestions:
+            session.add(
+                RothConversionPlan(
+                    id=new_id(),
+                    scenario_id=scenario.id,
+                    source_account_id=result.source_account_id,
+                    destination_account_id=result.destination_account_id,
+                    year=suggestion.year,
+                    amount=suggestion.amount,
+                )
+            )
+        session.commit()
+
+    return RothExplorerRead(
+        strategy=result.strategy,
+        source_account_id=result.source_account_id,
+        destination_account_id=result.destination_account_id,
+        suggestions=[_suggestion_read(s) for s in result.suggestions],
+        total_converted=result.total_converted,
+        baseline_lifetime_tax=result.baseline_lifetime_tax,
+        projected_lifetime_tax=result.projected_lifetime_tax,
+        baseline_estate=result.baseline_estate,
+        projected_estate=result.projected_estate,
+        note=result.note,
+    )
+
+
+@app.get(
+    "/scenarios/{scenario_id}/assumption-comparison",
+    response_model=AssumptionComparisonRead,
+    tags=["projection"],
+)
+def assumption_comparison(scenario_id: str, session: SessionDep) -> AssumptionComparisonRead:
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    base = build_projection_input(scenario, assumptions, session)
+
+    def summary_for(variant: str) -> ProjectionSummaryRead:
+        run = run_projection(
+            apply_rate_variant(base, variant),
+            assumptions.irs_data_version,
+            assumptions.engine_version,
+        )
+        return ProjectionSummaryRead(**run.summary.__dict__)
+
+    return AssumptionComparisonRead(
+        average=summary_for("average"),
+        optimistic=summary_for("optimistic"),
+        pessimistic=summary_for("pessimistic"),
+    )
+
+
+@app.get(
+    "/scenarios/{scenario_id}/insights",
+    response_model=InsightsRead,
+    tags=["projection"],
+)
+def scenario_insights(scenario_id: str, session: SessionDep) -> InsightsRead:
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    projection_input = build_projection_input(scenario, assumptions, session)
+    run = run_projection(
+        projection_input, assumptions.irs_data_version, assumptions.engine_version
+    )
+    monte_carlo = run_monte_carlo(
+        projection_input,
+        assumptions.irs_data_version,
+        assumptions.engine_version,
+        trials=300,
+        seed=12345,
+    )
+    primary = next((p for p in scenario.household.people if p.is_primary), None)
+    life_expectancy = primary.life_expectancy_age if primary else run.summary.final_age
+    result = compute_insights(projection_input, run, monte_carlo, life_expectancy)
+    return InsightsRead(
+        score=result.score,
+        rating=result.rating,
+        components=[
+            ScoreComponentRead(
+                label=c.label, score=c.score, weight=c.weight, detail=c.detail
+            )
+            for c in result.components
+        ],
+        alerts=[
+            AlertRead(severity=a.severity, title=a.title, message=a.message)
+            for a in result.alerts
+        ],
+    )
+
+
+@app.get(
+    "/scenarios/{scenario_id}/social-security-explorer",
+    response_model=SocialSecurityExplorerRead,
+    tags=["social-security"],
+)
+def social_security_explorer(
+    scenario_id: str,
+    session: SessionDep,
+    person_id: str | None = None,
+) -> SocialSecurityExplorerRead:
+    scenario = load_scenario_for_projection(scenario_id, session)
+    assumptions = get_or_create_assumptions(scenario, session)
+    people = scenario.household.people
+    person = None
+    if person_id is not None:
+        person = next((p for p in people if p.id == person_id), None)
+    if person is None:
+        person = next((p for p in people if p.is_primary), people[0] if people else None)
+    if person is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No person found")
+
+    ss_stream = session.scalar(
+        select(IncomeStream).where(
+            IncomeStream.household_id == scenario.household_id,
+            IncomeStream.person_id == person.id,
+            IncomeStream.kind == "social_security",
+        )
+    )
+    birth_year = parse_year(person.dob)
+    fra_months = full_retirement_age_months(birth_year)
+    if ss_stream is not None:
+        claiming_age = ss_stream.claiming_age or (fra_months // 12)
+        pia = pia_from_benefit(ss_stream.annual_amount, claiming_age, fra_months)
+    else:
+        claiming_age = None
+        pia = Decimal("0")
+
+    result = explore_claiming_ages(
+        pia_annual=pia,
+        birth_year=birth_year,
+        life_expectancy_age=person.life_expectancy_age,
+        cola_rate=assumptions.ss_cola_rate,
+    )
+    return SocialSecurityExplorerRead(
+        person_id=person.id,
+        person_name=person.name,
+        pia_annual=result.pia_annual,
+        full_retirement_age_months=result.full_retirement_age_months,
+        current_claiming_age=claiming_age,
+        options=[
+            ClaimingOptionRead(
+                claiming_age=o.claiming_age,
+                monthly_benefit=o.monthly_benefit,
+                annual_benefit=o.annual_benefit,
+                lifetime_total=o.lifetime_total,
+                break_even_age_vs_earliest=o.break_even_age_vs_earliest,
+            )
+            for o in result.options
+        ],
+        max_lifetime_claiming_age=result.max_lifetime_claiming_age,
+    )
+
+
+def _suggestion_read(suggestion: ConversionSuggestion) -> ConversionSuggestionRead:
+    return ConversionSuggestionRead(
+        year=suggestion.year,
+        amount=suggestion.amount,
+        ordinary_taxable_income=suggestion.ordinary_taxable_income,
+        magi=suggestion.magi,
+        headroom=suggestion.headroom,
+        traditional_balance=suggestion.traditional_balance,
+    )
 
 
 @app.get(
@@ -818,11 +1284,23 @@ def get_projection(scenario_id: str, session: SessionDep) -> ProjectionRead:
             .order_by(ProjectionWarning.year)
         ).all()
     )
+    scenario = session.get(Scenario, scenario_id)
+    illiquid_ids: set[str] = set()
+    if scenario is not None:
+        illiquid_ids = {
+            account.id
+            for account in session.scalars(
+                select(Account).where(Account.household_id == scenario.household_id)
+            ).all()
+            if account.account_type in {"real_estate", "debt"}
+        }
+    summary = compute_summary(years, balances, illiquid_ids)
     return ProjectionRead(
         metadata=ProjectionRunMetadataRead.model_validate(metadata),
         years=[ProjectionYearRead.model_validate(row) for row in years],
         account_balances=[ProjectionAccountBalanceRead.model_validate(row) for row in balances],
         warnings=[ProjectionWarningRead.model_validate(warning) for warning in warnings],
+        summary=None if summary is None else ProjectionSummaryRead(**summary.__dict__),
     )
 
 
@@ -911,7 +1389,13 @@ def build_projection_input(
     session: Session,
 ) -> ScenarioInput:
     people = [
-        EnginePerson(id=person.id, dob_year=parse_year(person.dob))
+        EnginePerson(
+            id=person.id,
+            dob_year=parse_year(person.dob),
+            # A person is modeled to die at an explicit death age, else their life expectancy.
+            death_year=parse_year(person.dob)
+            + (person.death_age if person.death_age is not None else person.life_expectancy_age),
+        )
         for person in scenario.household.people
     ]
     primary = next((person for person in scenario.household.people if person.is_primary), None)
@@ -925,6 +1409,10 @@ def build_projection_input(
         ).all()
     )
     account_states = [account_to_engine_state(account) for account in accounts]
+    # Apply the global housing appreciation assumption to real-estate accounts.
+    for state in account_states:
+        if state.account_type == "real_estate":
+            state.expected_return = assumptions.housing_appreciation_rate
     income_streams = [
         EngineIncomeStream(
             id=stream.id,
@@ -938,6 +1426,7 @@ def build_projection_input(
             is_taxable_federal=stream.is_taxable_federal,
             is_taxable_state=stream.is_taxable_state,
             claiming_age=stream.claiming_age,
+            survivor_pct=stream.survivor_pct,
         )
         for stream in session.scalars(
             select(IncomeStream).where(IncomeStream.household_id == scenario.household_id)
@@ -969,12 +1458,15 @@ def build_projection_input(
             if owner is None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"SEPP plan {plan.id}: account owner not found; cannot compute annual payment.",
+                    detail=(
+                        f"SEPP plan {plan.id}: account owner not found; "
+                        "cannot compute annual payment."
+                    ),
                 )
             try:
                 calc = _compute_sepp_payment(
                     SeppCalculationInput(
-                        method=plan.method,
+                        method=cast(SeppMethod, plan.method),
                         account_balance_at_valuation=plan.account_balance_at_valuation,
                         valuation_date=date.fromisoformat(plan.valuation_date),
                         first_payment_date=date.fromisoformat(plan.first_payment_date),
@@ -1016,6 +1508,31 @@ def build_projection_input(
             select(RothConversionPlan).where(RothConversionPlan.scenario_id == scenario.id)
         ).all()
     ]
+    contribution_plans = [
+        EngineContributionPlan(
+            account_id=contribution.account_id,
+            annual_amount=contribution.annual_amount,
+            start_year=contribution.start_year,
+            end_year=contribution.end_year,
+            inflation_kind=contribution.inflation_kind,
+            custom_inflation_rate=contribution.custom_inflation_rate,
+            employer_match_amount=contribution.employer_match_amount,
+        )
+        for contribution in session.scalars(
+            select(Contribution).where(Contribution.scenario_id == scenario.id)
+        ).all()
+    ]
+    money_flows = [
+        EngineMoneyFlowPlan(
+            from_account_id=flow.from_account_id,
+            to_account_id=flow.to_account_id,
+            year=flow.year,
+            amount=flow.amount,
+        )
+        for flow in session.scalars(
+            select(MoneyFlow).where(MoneyFlow.scenario_id == scenario.id)
+        ).all()
+    ]
     end_year = max(
         parse_year(person.dob) + person.life_expectancy_age
         for person in scenario.household.people
@@ -1027,6 +1544,9 @@ def build_projection_input(
         start_year=datetime.now(UTC).year,
         end_year=end_year,
         primary_person_id=primary.id,
+        spouse_person_id=next(
+            (p.id for p in scenario.household.people if not p.is_primary), None
+        ),
         people=people,
         accounts=account_states,
         income_streams=income_streams,
@@ -1036,6 +1556,8 @@ def build_projection_input(
             healthcare_inflation_rate=assumptions.healthcare_inflation_rate,
             ss_cola_rate=assumptions.ss_cola_rate,
             pension_cola_rate=assumptions.pension_cola_rate,
+            bracket_indexing_rate=assumptions.bracket_indexing_rate,
+            itemized_deductions=assumptions.itemized_deductions,
             cash_reserve_target_months=assumptions.cash_reserve_target_months,
             tax_iteration_max=assumptions.tax_iteration_max,
             tax_iteration_tolerance=assumptions.tax_iteration_tolerance,
@@ -1047,7 +1569,49 @@ def build_projection_input(
         ),
         sepp_plans=sepp_plans,
         roth_conversion_plans=roth_plans,
+        contribution_plans=contribution_plans,
+        money_flows=money_flows,
     )
+
+
+# Account types whose returns shift under optimistic/pessimistic assumption sets.
+_VARIANT_VOLATILE_TYPES = {
+    "taxable_brokerage",
+    "traditional_ira",
+    "traditional_401k",
+    "traditional_403b",
+    "governmental_457b",
+    "roth_ira",
+    "roth_401k",
+    "hsa",
+    "real_estate",
+}
+_DEFAULT_VARIANT_DELTA = Decimal("0.02")
+_VARIANT_CPI_DELTA = Decimal("0.005")
+
+
+def apply_rate_variant(scenario: ScenarioInput, variant: str) -> ScenarioInput:
+    """Return a scenario adjusted for Boldin-style optimistic/average/pessimistic assumptions.
+
+    Optimistic raises returns and lowers inflation; pessimistic does the reverse. "average" is the
+    unmodified scenario. The return shift uses each account's own stddev when set, else a default.
+    """
+    if variant not in {"optimistic", "pessimistic"}:
+        return scenario
+    sign = Decimal("1") if variant == "optimistic" else Decimal("-1")
+    overrides: dict[str, dict[int, Decimal]] = {}
+    years = range(scenario.start_year, scenario.end_year + 1)
+    for account in scenario.accounts:
+        if account.account_type not in _VARIANT_VOLATILE_TYPES:
+            continue
+        delta = account.return_stddev if account.return_stddev else _DEFAULT_VARIANT_DELTA
+        rate = account.expected_return + sign * delta
+        overrides[account.id] = {year: rate for year in years}
+    cpi = scenario.assumptions.cpi_rate - sign * _VARIANT_CPI_DELTA
+    if cpi < Decimal("0"):
+        cpi = Decimal("0")
+    new_assumptions = replace(scenario.assumptions, cpi_rate=cpi)
+    return replace(scenario, assumptions=new_assumptions, return_overrides=overrides)
 
 
 def account_to_engine_state(account: Account) -> AccountYearState:
@@ -1058,6 +1622,7 @@ def account_to_engine_state(account: Account) -> AccountYearState:
         account_type=account.account_type,
         balance=account.current_balance,
         expected_return=account.expected_return,
+        return_stddev=account.return_stddev,
         cost_basis_pct=account.cost_basis_pct,
         roth_first_contribution_year=account.roth_first_contribution_year,
         roth_contributions_basis=(
@@ -1073,6 +1638,12 @@ def account_to_engine_state(account: Account) -> AccountYearState:
         ],
         hsa_qualified_medical_expense_pct=(
             account.hsa_qualified_medical_expense_pct or Decimal("1")
+        ),
+        debt_annual_payment=account.debt_annual_payment or Decimal("0"),
+        exclude_from_withdrawals=account.exclude_from_withdrawals,
+        sale_year=account.sale_year,
+        selling_cost_pct=(
+            account.selling_cost_pct if account.selling_cost_pct is not None else Decimal("0.06")
         ),
     )
 

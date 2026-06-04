@@ -7,8 +7,23 @@ import { useEffect, useState } from "react";
 import { apiRequest, deleteHousehold, deleteScenario, formatMoney, type ScenarioDetail } from "../../lib/api";
 
 const NAV_ITEMS = [
+  {
+    href: "people",
+    label: "People",
+    description: "Add spouse/partner; ages, life expectancy, death age"
+  },
   { href: "accounts", label: "Accounts", description: "Cash, brokerage, IRA, 401(k), Roth, HSA" },
+  {
+    href: "contributions",
+    label: "Contributions",
+    description: "Ongoing savings + employer match (accumulation)"
+  },
   { href: "income", label: "Income", description: "Salary, pension, Social Security, annuity" },
+  {
+    href: "social-security",
+    label: "Social Security",
+    description: "Claiming-age explorer + break-even"
+  },
   { href: "expenses", label: "Expenses", description: "Must-spend, discretionary, healthcare" },
   { href: "sepp", label: "SEPP / 72(t)", description: "Substantially equal periodic payment plans" },
   {
@@ -17,6 +32,11 @@ const NAV_ITEMS = [
     description: "Year-by-year conversion schedule"
   },
   { href: "withdrawal", label: "Withdrawal Strategy", description: "Account drawdown order" },
+  {
+    href: "money-flows",
+    label: "Money Flows",
+    description: "Manual transfers, debt paydown, early withdrawals"
+  },
   { href: "assumptions", label: "Assumptions", description: "Inflation rates, IRS data version" },
   {
     href: "projection",
@@ -24,7 +44,12 @@ const NAV_ITEMS = [
     description: "Run and view year-by-year results",
     highlight: true
   },
-  { href: "charts", label: "Charts", description: "Net worth, cash flow, taxes, MAGI" }
+  { href: "charts", label: "Charts", description: "Net worth, cash flow, taxes, MAGI" },
+  {
+    href: "insights",
+    label: "Insights & Coach",
+    description: "Wellness score + actionable suggestions"
+  }
 ];
 
 export default function ScenarioPage() {

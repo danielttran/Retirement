@@ -1361,7 +1361,7 @@ def test_delete_household(client: TestClient, scenario: dict) -> None:
     resp = client.delete(f"/households/{hid}")
     assert resp.status_code == 204
     assert client.get(f"/scenarios/{sid}").status_code == 404
-    households = client.get("/households").json() if hasattr(client.get("/households"), "json") else []
+    client.get("/households").json() if hasattr(client.get("/households"), "json") else []
     scenario_list = client.get("/scenarios").json()
     assert all(s["id"] != sid for s in scenario_list)
 
@@ -2232,7 +2232,7 @@ def test_run_projection_active_sepp_decrements_account_balance_each_year(
     for row in active_rows:
         assert Decimal(row["distributions"]) == Decimal("10000.00")
     # And ending balance must monotonically decrease (expected_return=0 and no contributions).
-    for prev, curr in zip(active_rows, active_rows[1:]):
+    for prev, curr in zip(active_rows, active_rows[1:], strict=False):
         assert Decimal(curr["ending_balance"]) < Decimal(prev["ending_balance"])
 
 
@@ -2253,3 +2253,338 @@ def test_delete_account_reduces_balance(client: TestClient, scenario: dict) -> N
     detail = client.get(f"/scenarios/{sid}").json()
     assert Decimal(detail["total_account_balance"]) == Decimal("0")
 
+
+
+# ---------------------------------------------------------------------------
+# Contributions (accumulation-phase savings + employer match)
+# ---------------------------------------------------------------------------
+
+
+def _make_account(client: TestClient, sid: str, person_id: str, acct_type: str) -> str:
+    extra: dict = {}
+    if acct_type in {"roth_ira", "roth_401k"}:
+        extra["roth_first_contribution_year"] = 2015
+    resp = client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": person_id,
+            "name": acct_type,
+            "account_type": acct_type,
+            "current_balance": "0",
+            "expected_return": "0",
+            **extra,
+        },
+    )
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+def test_contribution_crud(client: TestClient, scenario: dict) -> None:
+    sid = scenario["id"]
+    person_id = scenario["household"]["people"][0]["id"]
+    acct_id = _make_account(client, sid, person_id, "traditional_401k")
+
+    assert client.get(f"/scenarios/{sid}/contributions").json() == []
+
+    created = client.post(
+        f"/scenarios/{sid}/contributions",
+        json={
+            "account_id": acct_id,
+            "annual_amount": "20000",
+            "start_year": 2024,
+            "end_year": 2030,
+            "inflation_kind": "cpi",
+            "employer_match_amount": "5000",
+        },
+    )
+    assert created.status_code == 201
+    cid = created.json()["id"]
+    assert Decimal(created.json()["employer_match_amount"]) == Decimal("5000")
+
+    listed = client.get(f"/scenarios/{sid}/contributions").json()
+    assert len(listed) == 1
+
+    updated = client.put(
+        f"/scenarios/{sid}/contributions/{cid}",
+        json={
+            "account_id": acct_id,
+            "annual_amount": "25000",
+            "start_year": 2024,
+            "inflation_kind": "none",
+            "employer_match_amount": "0",
+        },
+    )
+    assert updated.status_code == 200
+    assert Decimal(updated.json()["annual_amount"]) == Decimal("25000")
+
+    assert client.delete(f"/scenarios/{sid}/contributions/{cid}").status_code == 204
+    assert client.get(f"/scenarios/{sid}/contributions").json() == []
+
+
+def test_contribution_feeds_projection(client: TestClient, scenario: dict) -> None:
+    sid = scenario["id"]
+    person_id = scenario["household"]["people"][0]["id"]
+    cash_id = _make_account(client, sid, person_id, "cash")
+    k_id = _make_account(client, sid, person_id, "traditional_401k")
+    # Fund cash so the household has income via... use a salary income stream instead.
+    client.post(
+        f"/scenarios/{sid}/income-streams",
+        json={
+            "name": "Salary",
+            "kind": "salary",
+            "annual_amount": "100000",
+            "start_year": 2024,
+            "inflation_kind": "none",
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/contributions",
+        json={
+            "account_id": k_id,
+            "annual_amount": "18000",
+            "start_year": 2024,
+            "inflation_kind": "none",
+            "employer_match_amount": "9000",
+        },
+    )
+    run = client.post(f"/scenarios/{sid}/run-projection")
+    assert run.status_code == 200
+    balances = run.json()["account_balances"]
+    first_year = min(b["year"] for b in balances)
+    k_bal = next(
+        b for b in balances if b["account_id"] == k_id and b["year"] == first_year
+    )
+    # 18k employee + 9k employer match contributed in the first year.
+    assert Decimal(k_bal["contributions"]) == Decimal("27000.00")
+    assert cash_id  # cash account exists for surplus routing
+
+
+def test_monte_carlo_endpoint(client: TestClient, scenario: dict) -> None:
+    sid = scenario["id"]
+    person_id = scenario["household"]["people"][0]["id"]
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": person_id,
+            "name": "Brokerage",
+            "account_type": "taxable_brokerage",
+            "current_balance": "1000000",
+            "expected_return": "0.06",
+            "return_stddev": "0.10",
+            "cost_basis_pct": "0.8",
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/expense-streams",
+        json={"name": "Living", "kind": "must_spend", "annual_amount": "40000", "start_year": 2024},
+    )
+    resp = client.post(f"/scenarios/{sid}/monte-carlo?trials=60")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["trials"] == 60
+    assert 0 <= float(body["chance_of_success"]) <= 100
+
+
+def test_rate_variant_optimistic_beats_pessimistic() -> None:
+    from app.main import apply_rate_variant
+    from planner_engine.common import AccountYearState, Person
+    from planner_engine.projection import (
+        AssumptionSet,
+        ExpenseStream,
+        ScenarioInput,
+        run_projection,
+    )
+
+    base = ScenarioInput(
+        id="s1",
+        filing_status="single",
+        state="MA",
+        start_year=2024,
+        end_year=2034,
+        primary_person_id="p1",
+        people=[Person("p1", dob_year=1959, age_by_year={y: y - 1959 for y in range(2024, 2035)})],
+        accounts=[
+            AccountYearState(
+                "brk", "p1", "taxable_brokerage", Decimal("1000000"), Decimal("0.06"),
+                cost_basis_pct=Decimal("0.8"),
+            )
+        ],
+        expense_streams=[
+            ExpenseStream("e", "must_spend", Decimal("40000"), 2024, inflation_kind="none")
+        ],
+        assumptions=AssumptionSet(cpi_rate=Decimal("0.025")),
+    )
+    opt = run_projection(apply_rate_variant(base, "optimistic"), "2024-33", "test")
+    pess = run_projection(apply_rate_variant(base, "pessimistic"), "2024-33", "test")
+    avg = run_projection(apply_rate_variant(base, "average"), "2024-33", "test")
+    assert opt.summary.estate_net_worth > avg.summary.estate_net_worth
+    assert avg.summary.estate_net_worth > pess.summary.estate_net_worth
+
+
+def test_roth_explorer_endpoint(client: TestClient) -> None:
+    hh = client.post(
+        "/households",
+        json={
+            "name": "Explorer HH",
+            "filing_status": "single",
+            "state": "MA",
+            "primary_person": {"name": "Pat", "dob": "1962-01-01", "life_expectancy_age": 80},
+            "scenario_name": "Base",
+        },
+    ).json()
+    sid = hh["id"]
+    pid = hh["household"]["people"][0]["id"]
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": pid, "name": "IRA", "account_type": "traditional_ira",
+            "current_balance": "700000", "expected_return": "0.05",
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": pid, "name": "Roth", "account_type": "roth_ira",
+            "current_balance": "0", "expected_return": "0.05",
+            "roth_first_contribution_year": 2010,
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/expense-streams",
+        json={"name": "Living", "kind": "must_spend", "annual_amount": "40000", "start_year": 2024},
+    )
+    resp = client.post(
+        f"/scenarios/{sid}/roth-explorer?strategy=bracket&target_rate=0.22"
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["strategy"] == "bracket"
+    assert len(body["suggestions"]) > 0
+    # Apply persists the suggested conversions.
+    applied = client.post(
+        f"/scenarios/{sid}/roth-explorer?strategy=bracket&target_rate=0.22&apply=true"
+    ).json()
+    plans = client.get(f"/scenarios/{sid}/roth-conversions").json()
+    assert len(plans) == len(applied["suggestions"])
+
+
+def test_social_security_explorer_endpoint(client: TestClient) -> None:
+    hh = client.post(
+        "/households",
+        json={
+            "name": "SS HH",
+            "filing_status": "single",
+            "state": "MA",
+            "primary_person": {"name": "Sam", "dob": "1965-06-01", "life_expectancy_age": 90},
+            "scenario_name": "Base",
+        },
+    ).json()
+    sid = hh["id"]
+    pid = hh["household"]["people"][0]["id"]
+    client.post(
+        f"/scenarios/{sid}/income-streams",
+        json={
+            "name": "SS", "kind": "social_security", "annual_amount": "21000",
+            "start_year": 2027, "inflation_kind": "ss_cola", "person_id": pid,
+            "claiming_age": 62,
+        },
+    )
+    resp = client.get(f"/scenarios/{sid}/social-security-explorer?person_id={pid}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["options"]) == 9
+    assert body["current_claiming_age"] == 62
+    # PIA backed out from a 62 benefit of 21000 (0.70 multiplier) ≈ 30000.
+    assert abs(float(body["pia_annual"]) - 30000) < 1
+    assert body["max_lifetime_claiming_age"] == 70
+
+
+def test_insights_endpoint(client: TestClient) -> None:
+    hh = client.post(
+        "/households",
+        json={
+            "name": "Insights HH",
+            "filing_status": "single",
+            "state": "MA",
+            "primary_person": {"name": "Lee", "dob": "1958-01-01", "life_expectancy_age": 90},
+            "scenario_name": "Base",
+        },
+    ).json()
+    sid = hh["id"]
+    pid = hh["household"]["people"][0]["id"]
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": pid, "name": "Brokerage", "account_type": "taxable_brokerage",
+            "current_balance": "2000000", "expected_return": "0.05",
+            "return_stddev": "0.10", "cost_basis_pct": "0.8",
+        },
+    )
+    client.post(
+        f"/scenarios/{sid}/expense-streams",
+        json={"name": "Living", "kind": "must_spend", "annual_amount": "40000", "start_year": 2024},
+    )
+    resp = client.get(f"/scenarios/{sid}/insights")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert 0 <= body["score"] <= 100
+    assert body["rating"] in {"Excellent", "Good", "Fair", "At Risk"}
+    assert len(body["components"]) >= 3
+
+
+def test_add_and_delete_spouse(client: TestClient, scenario: dict) -> None:
+    hid = scenario["household_id"]
+    resp = client.post(
+        f"/households/{hid}/people",
+        json={"name": "Sam", "dob": "1962-03-01", "life_expectancy_age": 90, "death_age": 88},
+    )
+    assert resp.status_code == 201
+    people = resp.json()["people"]
+    assert len(people) == 2
+    spouse = next(p for p in people if not p["is_primary"])
+    assert spouse["death_age"] == 88
+    # Cannot delete the primary person.
+    primary = next(p for p in people if p["is_primary"])
+    assert client.delete(f"/households/{hid}/people/{primary['id']}").status_code == 400
+    # Can delete the spouse.
+    assert client.delete(f"/households/{hid}/people/{spouse['id']}").status_code == 204
+
+
+def test_survivor_changes_projection_for_couple(client: TestClient) -> None:
+    hh = client.post(
+        "/households",
+        json={
+            "name": "Couple",
+            "filing_status": "mfj",
+            "state": "MA",
+            "primary_person": {"name": "A", "dob": "1950-01-01", "life_expectancy_age": 78},
+            "scenario_name": "Base",
+        },
+    ).json()
+    sid = hh["id"]
+    hid = hh["household_id"]
+    pid_a = hh["household"]["people"][0]["id"]
+    b = client.post(
+        f"/households/{hid}/people",
+        json={"name": "B", "dob": "1952-01-01", "life_expectancy_age": 90},
+    ).json()["people"]
+    pid_b = next(p["id"] for p in b if not p["is_primary"])
+    client.post(
+        f"/scenarios/{sid}/accounts",
+        json={
+            "owner_person_id": pid_a, "name": "Cash", "account_type": "cash",
+            "current_balance": "2000000", "expected_return": "0",
+        },
+    )
+    for pid, amt in ((pid_a, "40000"), (pid_b, "24000")):
+        client.post(
+            f"/scenarios/{sid}/income-streams",
+            json={
+                "name": "SS", "kind": "social_security", "annual_amount": amt,
+                "start_year": 2024, "inflation_kind": "none", "person_id": pid, "claiming_age": 62,
+            },
+        )
+    run = client.post(f"/scenarios/{sid}/run-projection").json()
+    years = {y["year"]: y for y in run["years"]}
+    # A dies at 78 (born 1950 → 2028). Year 2029: survivor B gets max(24000, 40000) = 40000.
+    assert Decimal(years[2029]["gross_income"]) == Decimal("40000.00")

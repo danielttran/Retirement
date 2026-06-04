@@ -43,6 +43,7 @@ class Person(Base):
     dob: Mapped[str] = mapped_column(String, nullable=False)
     retirement_date: Mapped[str | None] = mapped_column(String, nullable=True)
     life_expectancy_age: Mapped[int] = mapped_column(nullable=False)
+    death_age: Mapped[int | None] = mapped_column(nullable=True)
     is_primary: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     household: Mapped[Household] = relationship(back_populates="people")
@@ -72,6 +73,10 @@ class Account(Base):
     hsa_qualified_medical_expense_pct: Mapped[Decimal | None] = mapped_column(
         Money(), nullable=True
     )
+    debt_annual_payment: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
+    exclude_from_withdrawals: Mapped[bool] = mapped_column(default=False, nullable=False)
+    sale_year: Mapped[int | None] = mapped_column(nullable=True)
+    selling_cost_pct: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.06"))
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(String, nullable=False)
 
@@ -125,6 +130,7 @@ class IncomeStream(Base):
     is_taxable_federal: Mapped[bool] = mapped_column(default=True, nullable=False)
     is_taxable_state: Mapped[bool] = mapped_column(default=True, nullable=False)
     claiming_age: Mapped[int | None] = mapped_column(nullable=True)
+    survivor_pct: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
 
     household: Mapped[Household] = relationship(back_populates="income_streams")
     person: Mapped[Person | None] = relationship(back_populates="income_streams")
@@ -168,6 +174,12 @@ class Scenario(Base):
     roth_conversion_plans: Mapped[list[RothConversionPlan]] = relationship(
         back_populates="scenario", cascade="all, delete-orphan"
     )
+    contributions: Mapped[list[Contribution]] = relationship(
+        back_populates="scenario", cascade="all, delete-orphan"
+    )
+    money_flows: Mapped[list[MoneyFlow]] = relationship(
+        back_populates="scenario", cascade="all, delete-orphan"
+    )
 
 
 class AssumptionSet(Base):
@@ -181,7 +193,9 @@ class AssumptionSet(Base):
     healthcare_inflation_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.04"))
     ss_cola_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.025"))
     pension_cola_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
+    housing_appreciation_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.04"))
     bracket_indexing_rate: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0.025"))
+    itemized_deductions: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
     cash_reserve_target_months: Mapped[int] = mapped_column(default=24, nullable=False)
     irs_data_version: Mapped[str] = mapped_column(String, default="2024-33", nullable=False)
     engine_version: Mapped[str] = mapped_column(String, nullable=False)
@@ -262,6 +276,38 @@ class RothConversionPlan(Base):
     scenario: Mapped[Scenario] = relationship(back_populates="roth_conversion_plans")
 
 
+class Contribution(Base):
+    __tablename__ = "contribution"
+    __table_args__ = (Index("ix_contribution_scenario", "scenario_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(ForeignKey("scenario.id"), nullable=False)
+    account_id: Mapped[str] = mapped_column(ForeignKey("account.id"), nullable=False)
+    annual_amount: Mapped[Decimal] = mapped_column(Money(), nullable=False)
+    start_year: Mapped[int] = mapped_column(nullable=False)
+    end_year: Mapped[int | None] = mapped_column(nullable=True)
+    inflation_kind: Mapped[str] = mapped_column(String, default="cpi", nullable=False)
+    custom_inflation_rate: Mapped[Decimal | None] = mapped_column(Money(), nullable=True)
+    employer_match_amount: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
+
+    scenario: Mapped[Scenario] = relationship(back_populates="contributions")
+
+
+class MoneyFlow(Base):
+    __tablename__ = "money_flow"
+    __table_args__ = (Index("ix_money_flow_scenario", "scenario_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(ForeignKey("scenario.id"), nullable=False)
+    from_account_id: Mapped[str] = mapped_column(ForeignKey("account.id"), nullable=False)
+    to_account_id: Mapped[str] = mapped_column(ForeignKey("account.id"), nullable=False)
+    year: Mapped[int] = mapped_column(nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Money(), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    scenario: Mapped[Scenario] = relationship(back_populates="money_flows")
+
+
 class ProjectionRunMetadata(Base):
     __tablename__ = "projection_run_metadata"
 
@@ -297,6 +343,8 @@ class ProjectionYear(Base):
     magi: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     provisional_income: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     ss_taxable_portion: Mapped[Decimal] = mapped_column(Money(), nullable=False)
+    ordinary_taxable_income: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
+    medicare_irmaa: Mapped[Decimal] = mapped_column(Money(), default=Decimal("0"))
     surplus: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     ending_net_worth: Mapped[Decimal] = mapped_column(Money(), nullable=False)
 

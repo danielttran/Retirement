@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Protocol
 from uuid import uuid4
 
 from planner_engine.common import AccountYearState, Person, RothConversionLotState
 from planner_engine.rmd import compute_rmd_for_year
 from planner_engine.roth import RothConversionPlan, execute_roth_conversion
-from planner_engine.tax import TaxInput, TaxResult, compute_taxes
+from planner_engine.tax import TaxInput, TaxResult, compute_taxes, irmaa_annual_surcharge
 from planner_engine.withdrawal import (
     DEFAULT_WITHDRAWAL_ORDER,
     WithdrawalResult,
@@ -26,6 +28,8 @@ class AssumptionSet:
     healthcare_inflation_rate: Decimal = Decimal("0.04")
     ss_cola_rate: Decimal = Decimal("0.025")
     pension_cola_rate: Decimal = Decimal("0")
+    bracket_indexing_rate: Decimal = Decimal("0.025")
+    itemized_deductions: Decimal = Decimal("0")
     cash_reserve_target_months: int = 24
     tax_iteration_max: int = 5
     tax_iteration_tolerance: Decimal = Decimal("1.00")
@@ -44,6 +48,8 @@ class IncomeStream:
     is_taxable_federal: bool = True
     is_taxable_state: bool = True
     claiming_age: int | None = None
+    # Fraction (0..1) of a pension that continues to the household after the owner's death.
+    survivor_pct: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -68,6 +74,56 @@ class SeppProjectionPlan:
     annual_payment: Decimal
 
 
+# Account types whose employee elective deferrals are excluded from federal taxable wages.
+FEDERAL_PRETAX_ACCOUNT_TYPES = {
+    "traditional_401k",
+    "traditional_403b",
+    "governmental_457b",
+    "traditional_ira",
+    "hsa",
+}
+# MA excludes employer-plan elective deferrals from state wages but NOT traditional IRA/HSA.
+STATE_PRETAX_ACCOUNT_TYPES = {
+    "traditional_401k",
+    "traditional_403b",
+    "governmental_457b",
+}
+ROTH_ACCOUNT_TYPES = {"roth_ira", "roth_401k"}
+
+
+@dataclass(frozen=True)
+class MoneyFlowPlan:
+    """A manual, scheduled transfer between two accounts in a given year.
+
+    Moves cash from ``from_account_id`` to ``to_account_id``. A pre-tax source (traditional/457b/
+    deferred comp) realizes ordinary income; a taxable-brokerage source realizes LTCG on the gain
+    portion; cash/Roth/HSA/529 sources are tax-free. A debt destination pays the loan down.
+    """
+
+    from_account_id: str
+    to_account_id: str
+    year: int
+    amount: Decimal
+
+
+@dataclass(frozen=True)
+class ContributionPlan:
+    """A recurring savings contribution into an account during the accumulation phase.
+
+    ``annual_amount`` is the employee contribution in ``start_year`` dollars.
+    ``employer_match_amount`` is added on top (free money: it increases net worth and is never an
+    outflow from the budget). Pre-tax employee contributions reduce taxable wages per account type.
+    """
+
+    account_id: str
+    annual_amount: Decimal
+    start_year: int
+    end_year: int | None = None
+    inflation_kind: str = "cpi"
+    custom_inflation_rate: Decimal | None = None
+    employer_match_amount: Decimal = ZERO
+
+
 @dataclass(frozen=True)
 class ScenarioInput:
     id: str
@@ -85,7 +141,12 @@ class ScenarioInput:
     surplus_target_account_id: str | None = None
     sepp_plans: list[SeppProjectionPlan] = field(default_factory=list)
     roth_conversion_plans: list[RothConversionPlan] = field(default_factory=list)
+    contribution_plans: list[ContributionPlan] = field(default_factory=list)
+    money_flows: list[MoneyFlowPlan] = field(default_factory=list)
     spouse_person_id: str | None = None
+    # Optional per-account, per-year return overrides (account_id -> year -> rate). Used by the
+    # Monte Carlo driver to inject sampled returns while keeping the engine deterministic + Decimal.
+    return_overrides: dict[str, dict[int, Decimal]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -117,6 +178,8 @@ class ProjectionYear:
     magi: Decimal
     provisional_income: Decimal
     ss_taxable_portion: Decimal
+    ordinary_taxable_income: Decimal
+    medicare_irmaa: Decimal
     surplus: Decimal
     ending_net_worth: Decimal
 
@@ -144,12 +207,127 @@ class ProjectionWarning:
     message: str
 
 
+ILLIQUID_ACCOUNT_TYPES = {"real_estate", "debt"}
+
+
+@dataclass(frozen=True)
+class ProjectionSummary:
+    """Headline plan metrics (Boldin-style): lifetime taxes, out-of-savings age, estate value."""
+
+    final_year: int
+    final_age: int
+    estate_net_worth: Decimal
+    peak_net_worth: Decimal
+    peak_net_worth_year: int
+    lifetime_federal_tax: Decimal
+    lifetime_state_tax: Decimal
+    lifetime_penalties: Decimal
+    lifetime_total_tax: Decimal
+    total_lifetime_income: Decimal
+    total_lifetime_expenses: Decimal
+    total_lifetime_roth_conversions: Decimal
+    total_lifetime_irmaa: Decimal
+    out_of_savings_year: int | None
+    out_of_savings_age: int | None
+
+
 @dataclass(frozen=True)
 class ProjectionRun:
     metadata: ProjectionRunMetadata
     years: list[ProjectionYear]
     account_balances: list[ProjectionAccountBalance]
     warnings: list[ProjectionWarning]
+    summary: ProjectionSummary
+
+
+class _YearLike(Protocol):
+    @property
+    def year(self) -> int: ...
+    @property
+    def age_primary(self) -> int: ...
+    @property
+    def ending_net_worth(self) -> Decimal: ...
+    @property
+    def federal_tax(self) -> Decimal: ...
+    @property
+    def state_tax(self) -> Decimal: ...
+    @property
+    def early_withdrawal_penalty(self) -> Decimal: ...
+    @property
+    def gross_income(self) -> Decimal: ...
+    @property
+    def required_distributions(self) -> Decimal: ...
+    @property
+    def expenses(self) -> Decimal: ...
+    @property
+    def roth_conversions(self) -> Decimal: ...
+    @property
+    def medicare_irmaa(self) -> Decimal: ...
+
+
+class _BalanceLike(Protocol):
+    @property
+    def account_id(self) -> str: ...
+    @property
+    def year(self) -> int: ...
+    @property
+    def ending_balance(self) -> Decimal: ...
+
+
+def compute_summary(
+    years: Sequence[_YearLike],
+    account_balances: Sequence[_BalanceLike],
+    illiquid_account_ids: set[str],
+) -> ProjectionSummary | None:
+    """Derive headline metrics from a completed projection.
+
+    "Out of savings" = the first year liquid (investable) account balances are fully depleted, which
+    mirrors Boldin's out-of-savings age. Estate value is net worth in the final modeled year.
+    """
+    if not years:
+        return None
+    liquid_by_year: dict[int, Decimal] = {}
+    for bal in account_balances:
+        if bal.account_id in illiquid_account_ids:
+            continue
+        liquid_by_year[bal.year] = liquid_by_year.get(bal.year, ZERO) + bal.ending_balance
+
+    out_year: int | None = None
+    out_age: int | None = None
+    for row in years:
+        if liquid_by_year.get(row.year, ZERO) <= ZERO:
+            out_year = row.year
+            out_age = row.age_primary
+            break
+
+    peak = max(years, key=lambda r: r.ending_net_worth)
+    final = years[-1]
+    return ProjectionSummary(
+        final_year=final.year,
+        final_age=final.age_primary,
+        estate_net_worth=final.ending_net_worth,
+        peak_net_worth=peak.ending_net_worth,
+        peak_net_worth_year=peak.year,
+        lifetime_federal_tax=quantize_cents(sum((r.federal_tax for r in years), ZERO)),
+        lifetime_state_tax=quantize_cents(sum((r.state_tax for r in years), ZERO)),
+        lifetime_penalties=quantize_cents(sum((r.early_withdrawal_penalty for r in years), ZERO)),
+        lifetime_total_tax=quantize_cents(
+            sum(
+                (r.federal_tax + r.state_tax + r.early_withdrawal_penalty for r in years),
+                ZERO,
+            )
+        ),
+        total_lifetime_income=quantize_cents(
+            sum((r.gross_income + r.required_distributions for r in years), ZERO)
+        ),
+        total_lifetime_expenses=quantize_cents(sum((r.expenses for r in years), ZERO)),
+        total_lifetime_roth_conversions=quantize_cents(
+            sum((r.roth_conversions for r in years), ZERO)
+        ),
+        total_lifetime_irmaa=quantize_cents(sum((r.medicare_irmaa for r in years), ZERO)),
+        out_of_savings_year=out_year,
+        out_of_savings_age=out_age,
+    )
 
 
 @dataclass(frozen=True)
@@ -163,8 +341,195 @@ class _IncomeBuckets:
     ltcg: Decimal = ZERO
 
 
+@dataclass(frozen=True)
+class _ContributionResult:
+    employee_total: Decimal = ZERO
+    employer_total: Decimal = ZERO
+    federal_wage_reduction: Decimal = ZERO
+    state_wage_reduction: Decimal = ZERO
+
+
 def quantize_cents(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def _apply_contributions(
+    scenario: ScenarioInput,
+    accounts: dict[str, AccountYearState],
+    contributions: dict[str, Decimal],
+    income: _IncomeBuckets,
+    expenses: Decimal,
+    year: int,
+) -> _ContributionResult:
+    """Apply employee + employer contributions for the year.
+
+    Employee contributions are funded from current-year income (capped at ``income - expenses``
+    so the engine never withdraws from savings just to fund a contribution). Employer match scales
+    with the funded fraction of the employee contribution. Returns totals + taxable-wage reductions.
+    """
+    active = [
+        plan
+        for plan in scenario.contribution_plans
+        if _stream_active(plan.start_year, plan.end_year, year)
+    ]
+    if not active:
+        return _ContributionResult()
+
+    intended: list[tuple[ContributionPlan, Decimal, Decimal]] = []
+    intended_employee_total = ZERO
+    for plan in active:
+        rate = _contribution_inflation_rate(plan, scenario.assumptions)
+        employee = _inflate(plan.annual_amount, rate, year - plan.start_year)
+        employer = _inflate(plan.employer_match_amount, rate, year - plan.start_year)
+        intended.append((plan, employee, employer))
+        intended_employee_total += employee
+
+    available = max(ZERO, income.gross - expenses)
+    fund_fraction = ONE
+    if intended_employee_total > available and intended_employee_total > ZERO:
+        fund_fraction = available / intended_employee_total
+
+    employee_total = ZERO
+    employer_total = ZERO
+    federal_reduction = ZERO
+    state_reduction = ZERO
+    for plan, employee, employer in intended:
+        funded_employee = quantize_cents(employee * fund_fraction)
+        funded_employer = quantize_cents(employer * fund_fraction)
+        account = accounts.get(plan.account_id)
+        if account is None:
+            continue
+        total_in = funded_employee + funded_employer
+        account.balance += total_in
+        contributions[plan.account_id] += total_in
+        if account.account_type in ROTH_ACCOUNT_TYPES:
+            account.roth_contributions_basis += funded_employee
+        employee_total += funded_employee
+        employer_total += funded_employer
+        if account.account_type in FEDERAL_PRETAX_ACCOUNT_TYPES:
+            federal_reduction += funded_employee
+        if account.account_type in STATE_PRETAX_ACCOUNT_TYPES:
+            state_reduction += funded_employee
+
+    return _ContributionResult(
+        employee_total=quantize_cents(employee_total),
+        employer_total=quantize_cents(employer_total),
+        federal_wage_reduction=quantize_cents(federal_reduction),
+        state_wage_reduction=quantize_cents(state_reduction),
+    )
+
+
+def _service_debt(
+    accounts: dict[str, AccountYearState],
+    distributions: dict[str, Decimal],
+) -> Decimal:
+    """Pay scheduled principal on debt accounts. Interest accrues via the end-of-year return loop.
+
+    The payment is a cash outflow (folded into the year's funding need). Principal cannot go below
+    zero, so the loan stops drawing payments once paid off.
+    """
+    total = ZERO
+    for account in accounts.values():
+        if account.account_type != "debt" or account.debt_annual_payment <= ZERO:
+            continue
+        payment = quantize_cents(min(account.debt_annual_payment, account.balance))
+        if payment <= ZERO:
+            continue
+        account.balance -= payment
+        distributions[account.id] += payment
+        total += payment
+    return quantize_cents(total)
+
+
+def _process_home_sales(
+    accounts: dict[str, AccountYearState],
+    contributions: dict[str, Decimal],
+    distributions: dict[str, Decimal],
+    year: int,
+) -> None:
+    """Liquidate real-estate accounts scheduled to sell this year; net proceeds move to cash.
+
+    Selling costs reduce net worth; the primary-residence gain exclusion is assumed (sale is
+    modeled tax-free). Proceeds land in the first cash account, else the first taxable brokerage.
+    """
+    destination = next(
+        (a for a in accounts.values() if a.account_type == "cash"),
+        next((a for a in accounts.values() if a.account_type == "taxable_brokerage"), None),
+    )
+    for account in accounts.values():
+        if account.account_type != "real_estate" or account.sale_year != year:
+            continue
+        if account.balance <= ZERO:
+            continue
+        gross = account.balance
+        net = quantize_cents(gross * (ONE - account.selling_cost_pct))
+        distributions[account.id] += gross
+        account.balance = ZERO
+        if destination is not None and destination.id != account.id:
+            destination.balance += net
+            contributions[destination.id] += net
+
+
+_MF_ORDINARY_SOURCES = {"traditional_ira", "traditional_401k", "traditional_403b",
+                        "governmental_457b", "deferred_comp"}
+
+
+def _execute_money_flows(
+    scenario: ScenarioInput,
+    accounts: dict[str, AccountYearState],
+    contributions: dict[str, Decimal],
+    distributions: dict[str, Decimal],
+    year: int,
+) -> tuple[Decimal, Decimal]:
+    """Run scheduled transfers for the year; return (ordinary_income, ltcg) they realize."""
+    ordinary = ZERO
+    ltcg = ZERO
+    for flow in scenario.money_flows:
+        if flow.year != year:
+            continue
+        src = accounts.get(flow.from_account_id)
+        dst = accounts.get(flow.to_account_id)
+        if src is None or dst is None:
+            continue
+        amount = quantize_cents(min(flow.amount, src.balance))
+        if amount <= ZERO:
+            continue
+        src.balance -= amount
+        distributions[flow.from_account_id] += amount
+        if src.account_type in _MF_ORDINARY_SOURCES:
+            ordinary += amount
+        elif src.account_type == "taxable_brokerage":
+            basis_pct = src.cost_basis_pct if src.cost_basis_pct is not None else ONE
+            ltcg += quantize_cents(amount * (ONE - basis_pct))
+        if dst.account_type == "debt":
+            paid = min(amount, dst.balance)  # pay down the loan
+            dst.balance -= paid
+            distributions[flow.to_account_id] += paid
+        else:
+            dst.balance += amount
+            contributions[flow.to_account_id] += amount
+            if dst.account_type in ROTH_ACCOUNT_TYPES:
+                dst.roth_contributions_basis += amount
+    return quantize_cents(ordinary), quantize_cents(ltcg)
+
+
+def _net_worth(accounts: dict[str, AccountYearState]) -> Decimal:
+    """Total net worth: assets minus debt liabilities (debt balances are amounts owed)."""
+    total = ZERO
+    for account in accounts.values():
+        if account.account_type == "debt":
+            total -= account.balance
+        else:
+            total += account.balance
+    return quantize_cents(total)
+
+
+def _contribution_inflation_rate(plan: ContributionPlan, assumptions: AssumptionSet) -> Decimal:
+    if plan.inflation_kind == "custom":
+        return plan.custom_inflation_rate or ZERO
+    if plan.inflation_kind == "none":
+        return ZERO
+    return assumptions.cpi_rate
 
 
 def run_projection(
@@ -178,6 +543,7 @@ def run_projection(
     account_balances: list[ProjectionAccountBalance] = []
     warnings: list[ProjectionWarning] = []
     convergence_log: list[dict[str, str | int]] = []
+    magi_history: dict[int, Decimal] = {}
 
     for year in range(scenario.start_year, scenario.end_year + 1):
         beginning = {account_id: account.balance for account_id, account in accounts.items()}
@@ -211,13 +577,38 @@ def run_projection(
             year,
             warnings,
         )
+        contribution = _apply_contributions(
+            scenario, accounts, contributions, income, expenses, year
+        )
+        debt_payments = _service_debt(accounts, distributions)
+        _process_home_sales(accounts, contributions, distributions, year)
+        mf_ordinary, mf_ltcg = _execute_money_flows(
+            scenario, accounts, contributions, distributions, year
+        )
+        filing_status = _filing_status_for_year(scenario, year)
+        medicare_enrolled = sum(
+            1
+            for person in scenario.people
+            if person.age_in_year(year) >= 65 and person.is_alive(year)
+        )
+        irmaa = irmaa_annual_surcharge(
+            magi_history.get(year - 2, ZERO),
+            filing_status,
+            medicare_enrolled,
+            year,
+            irs_data_version,
+            scenario.assumptions.bracket_indexing_rate,
+        )
+        cash_need = quantize_cents(
+            expenses + contribution.employee_total + debt_payments + irmaa
+        )
 
         pre_flexible_accounts = _clone_accounts(accounts)
         final_accounts, flex, tax_result, converged, iterations = _solve_flexible_withdrawals(
             scenario,
             pre_flexible_accounts,
             income,
-            expenses,
+            cash_need,
             sepp_distributions,
             rmd_distributions,
             roth_conversions,
@@ -225,13 +616,30 @@ def run_projection(
             people,
             year,
             irs_data_version,
+            contribution,
+            filing_status,
+            mf_ordinary,
+            mf_ltcg,
         )
         accounts = final_accounts
         _add_withdrawal_distributions(distributions, flex)
+        magi_history[year] = tax_result.magi
+        if irmaa > ZERO:
+            warnings.append(
+                ProjectionWarning(
+                    str(uuid4()),
+                    scenario.id,
+                    year,
+                    "info",
+                    "irmaa_threshold_crossed",
+                    f"Medicare IRMAA surcharge of {irmaa} applies "
+                    f"(based on MAGI from {year - 2}).",
+                )
+            )
 
         final_tax = _total_tax(tax_result)
         surplus = quantize_cents(
-            income.gross + sepp_distributions + rmd_distributions - expenses - final_tax
+            income.gross + sepp_distributions + rmd_distributions - cash_need - final_tax
         )
         if surplus > ZERO:
             _route_surplus(scenario, accounts, contributions, surplus, expenses)
@@ -247,7 +655,7 @@ def run_projection(
                 )
             )
         funding_gap = quantize_cents(
-            expenses + final_tax - income.gross - sepp_distributions - rmd_distributions
+            cash_need + final_tax - income.gross - sepp_distributions - rmd_distributions
         )
         if funding_gap > flex.withdrawn + scenario.assumptions.tax_iteration_tolerance:
             warnings.append(
@@ -266,7 +674,8 @@ def run_projection(
 
         for account_id, account in accounts.items():
             pre_return = account.balance
-            investment_return = quantize_cents(pre_return * account.expected_return)
+            rate = scenario.return_overrides.get(account_id, {}).get(year, account.expected_return)
+            investment_return = quantize_cents(pre_return * rate)
             account.balance = quantize_cents(account.balance + investment_return)
             account_balances.append(
                 ProjectionAccountBalance(
@@ -308,10 +717,10 @@ def run_projection(
                 magi=tax_result.magi,
                 provisional_income=tax_result.provisional_income,
                 ss_taxable_portion=tax_result.ss_taxable_portion,
+                ordinary_taxable_income=tax_result.ordinary_taxable,
+                medicare_irmaa=irmaa,
                 surplus=max(surplus, ZERO),
-                ending_net_worth=quantize_cents(
-                    sum((account.balance for account in accounts.values()), ZERO)
-                ),
+                ending_net_worth=_net_worth(accounts),
             )
         )
 
@@ -324,14 +733,44 @@ def run_projection(
         assumption_snapshot=_assumption_snapshot(scenario.assumptions),
         convergence_log=convergence_log,
     )
-    return ProjectionRun(metadata, projection_years, account_balances, warnings)
+    illiquid_ids = {
+        account_id
+        for account_id, account in accounts.items()
+        if account.account_type in ILLIQUID_ACCOUNT_TYPES
+    }
+    summary = compute_summary(projection_years, account_balances, illiquid_ids)
+    assert summary is not None or not projection_years
+    return ProjectionRun(
+        metadata,
+        projection_years,
+        account_balances,
+        warnings,
+        summary
+        or ProjectionSummary(
+            final_year=scenario.start_year,
+            final_age=0,
+            estate_net_worth=ZERO,
+            peak_net_worth=ZERO,
+            peak_net_worth_year=scenario.start_year,
+            lifetime_federal_tax=ZERO,
+            lifetime_state_tax=ZERO,
+            lifetime_penalties=ZERO,
+            lifetime_total_tax=ZERO,
+            total_lifetime_income=ZERO,
+            total_lifetime_expenses=ZERO,
+            total_lifetime_roth_conversions=ZERO,
+            total_lifetime_irmaa=ZERO,
+            out_of_savings_year=None,
+            out_of_savings_age=None,
+        ),
+    )
 
 
 def _solve_flexible_withdrawals(
     scenario: ScenarioInput,
     pre_flexible_accounts: dict[str, AccountYearState],
     income: _IncomeBuckets,
-    expenses: Decimal,
+    cash_need: Decimal,
     sepp_distributions: Decimal,
     rmd_distributions: Decimal,
     roth_conversions: Decimal,
@@ -339,6 +778,10 @@ def _solve_flexible_withdrawals(
     people: dict[str, Person],
     year: int,
     irs_data_version: str,
+    contribution: _ContributionResult,
+    filing_status: str,
+    mf_ordinary: Decimal,
+    mf_ltcg: Decimal,
 ) -> tuple[dict[str, AccountYearState], WithdrawalResult, TaxResult, bool, int]:
     prior_gap: Decimal | None = None
     best_accounts = _clone_accounts(pre_flexible_accounts)
@@ -352,12 +795,16 @@ def _solve_flexible_withdrawals(
         best_flex,
         year,
         irs_data_version,
+        contribution,
+        filing_status,
+        mf_ordinary,
+        mf_ltcg,
     )
 
     for iteration in range(scenario.assumptions.tax_iteration_max + 1):
         total_tax = _total_tax(best_tax)
         gap = quantize_cents(
-            expenses + total_tax - income.gross - sepp_distributions - rmd_distributions
+            cash_need + total_tax - income.gross - sepp_distributions - rmd_distributions
         )
         if gap <= ZERO:
             return (
@@ -393,6 +840,10 @@ def _solve_flexible_withdrawals(
             best_flex,
             year,
             irs_data_version,
+            contribution,
+            filing_status,
+            mf_ordinary,
+            mf_ltcg,
         )
         prior_gap = gap
 
@@ -408,25 +859,38 @@ def _compute_projection_taxes(
     flex: WithdrawalResult,
     year: int,
     irs_data_version: str,
+    contribution: _ContributionResult,
+    filing_status: str,
+    mf_ordinary: Decimal = ZERO,
+    mf_ltcg: Decimal = ZERO,
 ) -> TaxResult:
+    wages_federal = max(ZERO, income.wages - contribution.federal_wage_reduction)
+    wages_state = max(ZERO, income.wages - contribution.state_wage_reduction)
+    itemized = _inflate(
+        scenario.assumptions.itemized_deductions,
+        scenario.assumptions.bracket_indexing_rate,
+        year - scenario.start_year,
+    )
     return compute_taxes(
         TaxInput(
             year=year,
-            filing_status=scenario.filing_status,
+            filing_status=filing_status,
             state=scenario.state,
             ages={person.id: person.age_in_year(year) for person in scenario.people},
-            wages=income.wages,
+            wages=wages_federal,
+            wages_state=wages_state,
             pensions_taxable_federal=income.pensions_taxable_federal,
             pensions_taxable_state=income.pensions_taxable_state,
-            traditional_distributions=flex.ordinary_income,
+            traditional_distributions=flex.ordinary_income + mf_ordinary,
             roth_conversions=roth_conversions,
             sepp_distributions=sepp_distributions,
             rmd_distributions=rmd_distributions,
             annuity_taxable=income.annuity_taxable,
-            ltcg=income.ltcg + flex.ltcg,
+            ltcg=income.ltcg + flex.ltcg + mf_ltcg,
             ss_gross=income.ss_gross,
             penalty_eligible_distributions=flex.penalty_eligible,
             hsa_penalty_eligible_distributions=flex.hsa_penalty_eligible,
+            itemized_deductions=itemized,
             irs_data_version=irs_data_version,
         )
     )
@@ -438,34 +902,54 @@ def _income_for_year(
     year: int,
     people: dict[str, Person],
 ) -> _IncomeBuckets:
-    gross = wages = pensions_federal = pensions_state = annuity = ss = ltcg = ZERO
+    gross = wages = pensions_federal = pensions_state = annuity = ltcg = ZERO
+    ss_alive: list[Decimal] = []
+    ss_dead: list[Decimal] = []
     for stream in streams:
         if not _stream_active(stream.start_year, stream.end_year, year):
             continue
-        if stream.kind == "social_security" and stream.claiming_age is not None:
-            person = people.get(stream.person_id or "")
-            if person is not None and person.age_in_year(year) < stream.claiming_age:
-                continue
+        person = people.get(stream.person_id or "")
+        owner_alive = person is None or person.is_alive(year)
         amount = _inflate(
             stream.annual_amount,
             _income_inflation_rate(stream, assumptions),
             year - stream.start_year,
         )
-        gross += amount
         if stream.kind == "social_security":
-            ss += amount
-        elif stream.kind == "pension":
+            if stream.claiming_age is not None and person is not None:
+                if person.age_in_year(year) < stream.claiming_age:
+                    continue
+            (ss_alive if owner_alive else ss_dead).append(amount)
+            continue
+        if stream.kind == "pension":
+            if not owner_alive:
+                amount = quantize_cents(amount * stream.survivor_pct)
+            if amount <= ZERO:
+                continue
+            gross += amount
             if stream.is_taxable_federal:
                 pensions_federal += amount
             if stream.is_taxable_state:
                 pensions_state += amount
-        elif stream.kind == "annuity":
+            continue
+        # Non-pension, non-SS income from a deceased person stops.
+        if not owner_alive:
+            continue
+        gross += amount
+        if stream.kind == "annuity":
             if stream.is_taxable_federal:
                 annuity += amount
         elif stream.kind == "passive":
             ltcg += amount if stream.is_taxable_federal else ZERO
         elif stream.is_taxable_federal:
             wages += amount
+
+    # Social Security survivor rule: the survivor receives the greater of their own benefit or the
+    # deceased spouse's benefit; the smaller one stops.
+    ss = sum(ss_alive, ZERO)
+    if ss_dead:
+        ss += max(ZERO, max(ss_dead) - (max(ss_alive) if ss_alive else ZERO))
+    gross += ss
     return _IncomeBuckets(
         quantize_cents(gross),
         quantize_cents(wages),
@@ -495,6 +979,14 @@ def _expenses_for_year(
 
 def _stream_active(start_year: int, end_year: int | None, year: int) -> bool:
     return start_year <= year and (end_year is None or year <= end_year)
+
+
+def _filing_status_for_year(scenario: ScenarioInput, year: int) -> str:
+    """Joint filers revert to single after the first spouse's death."""
+    if scenario.filing_status in {"mfj", "qw"}:
+        if any(not person.is_alive(year) for person in scenario.people):
+            return "single"
+    return scenario.filing_status
 
 
 def _income_inflation_rate(stream: IncomeStream, assumptions: AssumptionSet) -> Decimal:
@@ -682,6 +1174,7 @@ def _clone_account(account: AccountYearState) -> AccountYearState:
         account_type=account.account_type,
         balance=account.balance,
         expected_return=account.expected_return,
+        return_stddev=account.return_stddev,
         cost_basis_pct=account.cost_basis_pct,
         roth_first_contribution_year=account.roth_first_contribution_year,
         roth_contributions_basis=account.roth_contributions_basis,
@@ -693,6 +1186,10 @@ def _clone_account(account: AccountYearState) -> AccountYearState:
         hsa_qualified_medical_expense_pct=account.hsa_qualified_medical_expense_pct,
         spouse_beneficiary_person_id=account.spouse_beneficiary_person_id,
         spouse_is_sole_beneficiary=account.spouse_is_sole_beneficiary,
+        debt_annual_payment=account.debt_annual_payment,
+        exclude_from_withdrawals=account.exclude_from_withdrawals,
+        sale_year=account.sale_year,
+        selling_cost_pct=account.selling_cost_pct,
     )
 
 
