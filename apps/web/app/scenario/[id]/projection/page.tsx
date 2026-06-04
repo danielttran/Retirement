@@ -190,6 +190,13 @@ export default function ProjectionPage() {
               >
                 Export balances CSV
               </button>
+              <button
+                className="h-9 rounded-md border border-stone-300 px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                onClick={() => window.print()}
+                type="button"
+              >
+                Print / Save PDF
+              </button>
             </>
           ) : null}
         </div>

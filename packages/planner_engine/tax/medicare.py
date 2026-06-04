@@ -51,6 +51,35 @@ def irmaa_monthly_surcharge(
     return surcharge
 
 
+# Rough 2024 national annual Medicare costs per person (Part B base + Part D + Medigap + dental).
+_MEDICARE_BASE_ANNUAL = Decimal("174.70") * MONTHS  # Part B standard
+_MEDICARE_PART_D_ANNUAL = Decimal("55.50") * MONTHS  # average Part D premium
+_MEDIGAP_ANNUAL = Decimal("150.00") * MONTHS  # Plan G-style supplement
+_DENTAL_VISION_ANNUAL = Decimal("50.00") * MONTHS
+# Health-status multipliers reflecting differing out-of-pocket costs.
+_HEALTH_MULTIPLIER = {
+    "excellent": Decimal("0.90"),
+    "good": Decimal("1.00"),
+    "poor": Decimal("1.25"),
+}
+
+
+def estimate_medicare_annual(
+    health: str = "good",
+    include_dental_vision: bool = True,
+) -> Decimal:
+    """Estimated annual Medicare cost per person at 65+ (premiums + supplement, before IRMAA).
+
+    A national rough estimate (Boldin uses state-specific data we cannot access locally). IRMAA
+    surcharges are computed separately via ``irmaa_annual_surcharge``.
+    """
+    base = _MEDICARE_BASE_ANNUAL + _MEDICARE_PART_D_ANNUAL + _MEDIGAP_ANNUAL
+    if include_dental_vision:
+        base += _DENTAL_VISION_ANNUAL
+    multiplier = _HEALTH_MULTIPLIER.get(health, ONE)
+    return _quantize(base * multiplier)
+
+
 def irmaa_annual_surcharge(
     magi: Decimal,
     filing_status: str,

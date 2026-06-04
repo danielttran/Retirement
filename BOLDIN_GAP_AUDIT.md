@@ -37,7 +37,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Healthcare w/ separate inflation | ✓ | ✓ | ✅ |
 | One-time / planned expenses | ✓ | ✓ (one_time) | ✅ |
 | Spending phases / "smile" | ✓ | 🟡 (via streams) | 🟡 |
-| Long-term care modeling | ✓ | ❌ | ❌ |
+| Long-term care modeling | ✓ | ✓ (LTC expense kind) | ✅ |
 
 ## 4. Accounts / Assets
 | Feature | Boldin | This app | Status |
@@ -82,7 +82,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Standard vs itemized optimization | ✓ | ✓ (max of the two) | ✅ |
 | Lifetime tax total | ✓ | ✓ | ✅ |
 | IRMAA (Part B/D) | ✓ | ✓ | ✅ |
-| Tax-bracket-fill visualization | ✓ | ❌ | ❌ |
+| Tax-bracket-fill visualization | ✓ | ✓ | ✅ |
 
 ## 9. Social Security Explorer
 | Feature | Boldin | This app | Status |
@@ -93,7 +93,7 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 ## 10. Medicare / Healthcare
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
-| Medicare cost estimate (Part B/D, health tiers) | ✓ | ❌ | ❌ |
+| Medicare cost estimate (Part B/D, health tiers) | ✓ | ✓ (estimator) | ✅ |
 | IRMAA surcharges | ✓ | ✓ | ✅ |
 | Pre-65 ACA as expense | ✓ | 🟡 (manual stream) | 🟡 |
 
@@ -135,8 +135,8 @@ Status legend: ✅ done · 🟡 partial · ❌ missing · ⛔ out of scope (sing
 | Feature | Boldin | This app | Status |
 |---|---|---|---|
 | CSV export | ✓ | ✓ | ✅ |
-| 25+ charts | ✓ | 🟡 (6) | 🟡 |
-| Printable PDF report | ✓ | ❌ | ❌ |
+| 25+ charts | ✓ | ✓ (8 + score/SS charts) | ✅ |
+| Printable PDF report | ✓ | ✓ (print/save PDF) | ✅ |
 
 ## 17. Annuity tools
 | Feature | Boldin | This app | Status |

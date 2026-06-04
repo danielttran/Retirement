@@ -39,6 +39,7 @@ from planner_engine.socialsecurity import (
     full_retirement_age_months,
     pia_from_benefit,
 )
+from planner_engine.tax import estimate_medicare_annual
 from planner_engine.withdrawal import DEFAULT_WITHDRAWAL_ORDER
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -82,6 +83,7 @@ from app.schemas import (
     IncomeStreamCreate,
     IncomeStreamRead,
     InsightsRead,
+    MedicareEstimateRead,
     MonteCarloRead,
     ProjectionAccountBalanceRead,
     ProjectionRead,
@@ -142,6 +144,18 @@ app.add_middleware(
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/calculators/medicare", response_model=MedicareEstimateRead, tags=["calculators"])
+def medicare_estimate(
+    health: str = "good",
+    include_dental_vision: bool = True,
+) -> MedicareEstimateRead:
+    return MedicareEstimateRead(
+        health=health,
+        annual_per_person=estimate_medicare_annual(health, include_dental_vision),
+        include_dental_vision=include_dental_vision,
+    )
 
 
 @app.get("/system/database", tags=["system"])

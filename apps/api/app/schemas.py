@@ -26,7 +26,9 @@ IncomeKind = Literal[
     "salary", "pension", "social_security", "annuity", "passive", "windfall", "other"
 ]
 IncomeInflationKind = Literal["cpi", "ss_cola", "pension_cola", "none", "custom"]
-ExpenseKind = Literal["must_spend", "discretionary", "healthcare", "one_time"]
+ExpenseKind = Literal[
+    "must_spend", "discretionary", "healthcare", "long_term_care", "one_time"
+]
 ExpenseInflationKind = Literal["cpi", "healthcare", "none", "custom"]
 SeppMethod = Literal["rmd", "fixed_amortization", "fixed_annuitization"]
 SeppStatus = Literal["planned", "active", "completed", "modified", "cancelled"]
@@ -443,6 +445,12 @@ class InsightsRead(BaseModel):
     rating: str
     components: list[ScoreComponentRead]
     alerts: list[AlertRead]
+
+
+class MedicareEstimateRead(BaseModel):
+    health: str
+    annual_per_person: Decimal
+    include_dental_vision: bool
 
 
 class MonteCarloRead(BaseModel):

@@ -167,6 +167,7 @@ export type ProjectionYear = {
   magi: string;
   provisional_income: string;
   ss_taxable_portion: string;
+  ordinary_taxable_income: string;
   medicare_irmaa: string;
   surplus: string;
   ending_net_worth: string;

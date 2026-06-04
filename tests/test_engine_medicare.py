@@ -67,3 +67,15 @@ def test_irmaa_appears_in_projection_for_high_income_senior() -> None:
     # First two years have no prior-2 MAGI history → no IRMAA; later years should.
     later = [y for y in run.years if y.year >= 2026]
     assert any(y.medicare_irmaa > Decimal("0") for y in later)
+
+
+def test_medicare_estimate_health_tiers() -> None:
+    from planner_engine.tax import estimate_medicare_annual
+
+    good = estimate_medicare_annual("good")
+    excellent = estimate_medicare_annual("excellent")
+    poor = estimate_medicare_annual("poor")
+    assert excellent < good < poor
+    # good: (174.70 + 55.50 + 150.00 + 50.00) * 12 = 5162.40
+    assert good == Decimal("5162.40")
+    assert estimate_medicare_annual("good", include_dental_vision=False) < good
